@@ -77,7 +77,7 @@ module.exports = {
           label: 'Guides',
           to: '/docs/guides',
           activeBaseRegex:
-            '(^/docs/guides/database/|^/docs/guides/auth/)|(/docs/guides$)|docs/(resources|learn)',
+            '(^/docs/guides/integrations/|^/docs/guides/database/|^/docs/guides/auth/)|(/docs/guides$)|docs/(resources|learn)',
           position: 'left',
         },
         {

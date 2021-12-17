@@ -89,9 +89,6 @@ export const POLICY_MODAL_VIEWS = {
 }
 
 export const LOG_TYPE_LABEL_MAPPING: { [k: string]: string } = {
-  rest: 'API',
-  realtime: 'Realtime',
-  auth: 'Auth',
-  storage: 'Storage',
+  api: 'API',
   database: 'Database',
 }

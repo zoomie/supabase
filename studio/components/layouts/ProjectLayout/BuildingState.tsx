@@ -24,10 +24,6 @@ const ProjectBuildingState: FC<ProjectBuildingState> = ({ project }) => {
     if (projectStatus && !projectStatus.error) {
       const { status } = projectStatus
       if (status === PROJECT_STATUS.ACTIVE_HEALTHY) {
-        const res = await get(`${API_URL}/props/project/${project.ref}/connection-string`)
-        if (res && res.connectionString) {
-          app.onProjectConnectionStringUpdated(project.id, res.connectionString)
-        }
         app.onProjectStatusUpdated(project.id, status)
         clearInterval(checkServerInterval.current)
       }

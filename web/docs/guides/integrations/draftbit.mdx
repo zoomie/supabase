@@ -27,8 +27,8 @@ You can find these unique values in the API settings of your Supabase account.
 
 - Click the Settings button from the top menu bar.
 - In Settings, select **API**.
-- In the Project API Keys section, select and copy the API key under `anon`. It is required for every request made to the Supabase database.
-- Also, under `Config`, select and copy the URL. It is the Base URL of your Supabase REST API. It will be requirest to make a connection to the Draftbit app.
+- In the **Project URL** section, select and copy the URL. It is the Base URL of your Supabase REST API. It will be required to make a connection to the Draftbit app.
+- Also, under `Project API keys`, select and copy the API key under `anon`. It is required for every request made to the Supabase database.
 
 ![Get Supabase connection string](/img/guides/integrations/draftbit/endpoint.png)
 
@@ -65,7 +65,7 @@ In your Draftbit builder interface:
 
 In this section, let's populate a Fetch component with all the data from a simple Supabase and then display the data fetched from the Supabase data table in a List component.
 
-For a reference, here is a how the Components tree looks like for this screen:
+For reference, here is a how the Components tree looks like for this screen:
 
 ![Components tree](/img/guides/integrations/draftbit/ctree.png)
 
@@ -158,7 +158,7 @@ In Draftbit, using a Touchable or a Button component, you can trigger the action
 
 Now, there is a working `POST` request in Draftbit. Map its response to the components on your screen in Draftbit.
 
-First, for each input component, make sure you have set the Field Names (found in the Configs tab, second from the left) to unique values. For example, in the screen below, there is one TextInput field component with the the value of the `Field Name` prop of `textInputValue`.
+First, for each input component, make sure you have set the Field Names (found in the Configs tab, second from the left) to unique values. For example, in the screen below, there is one TextInput field component with the value of the `Field Name` prop of `textInputValue`.
 
 ![Field Name prop on a TextInput component](/img/guides/integrations/draftbit/textinput.png)
 

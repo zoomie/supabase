@@ -13,6 +13,7 @@ module.exports = {
   organizationName: 'supabase', // Usually your GitHub org/user name.
   projectName: 'Supabase Docs', // Usually your repo name.
   onBrokenLinks: 'ignore',
+  themes: ['docusaurus-theme-search-typesense'],
   themeConfig: {
     colorMode: {
       // "light" | "dark"
@@ -25,23 +26,26 @@ module.exports = {
       // Should we use the prefers-color-scheme media-query,
       // using user system preferences, instead of the hardcoded defaultMode
       respectPrefersColorScheme: false,
-
-      // Dark/light switch icon options
-      switchConfig: {
-        // Icon for the switch while in dark mode
-        darkIcon: '  ',
-        darkIconStyle: {
-          marginTop: '1px',
-        },
-        lightIcon: '  ',
-        lightIconStyle: {
-          marginTop: '1px',
-        },
-      },
     },
-    algolia: {
-      apiKey: '766d56f13dd1e82f43253559b7c86636',
-      indexName: 'supabase',
+    typesense: {
+      typesenseCollectionName: 'supabase', // Replace with your own doc site's name. Should match the collection name in the scraper settings.
+
+      typesenseServerConfig: {
+        nodes: [
+          {
+            host: 'doc-search.supabase.com',
+            port: 443,
+            protocol: 'https',
+          },
+        ],
+        apiKey: 't0HAJQy4KtcMk3aYGnm8ONqab2oAysJz',
+      },
+
+      // Optional: Typesense search parameters: https://typesense.org/docs/0.21.0/api/documents.md#search-parameters
+      typesenseSearchParameters: {},
+
+      // Optional
+      contextualSearch: true,
     },
     image: '/img/supabase-og-image.png', // used for meta tag, in particular og:image and twitter:image
     metaImage: '/img/supabase-og-image.png',
@@ -56,17 +60,10 @@ module.exports = {
       },
       items: [
         {
-          label: 'Overview',
+          label: 'Guides',
           to: '/',
           activeBaseRegex:
             '.*.docs/$|^/docs/architecture|(^/docs/guides/(database|auth|storage|api|examples!))|(^/docs/guides/(examples|with-angular|with-flutter|with-nextjs|with-react|with-redwoodjs|with-svelte|with-vue-3)|^/docs/faq|^/docs/going-into-prod|^/docs/handbook|^/docs/company)',
-          position: 'left',
-        },
-        {
-          label: 'Guides',
-          to: '/docs/guides',
-          activeBaseRegex:
-            '(^/docs/guides/database/|^/docs/guides/auth/)|(/docs/guides$)|docs/(resources|learn)',
           position: 'left',
         },
         {
@@ -79,6 +76,11 @@ module.exports = {
         {
           href: 'https://github.com/supabase/supabase',
           className: 'navbar-item-github',
+          position: 'right',
+        },
+        {
+          href: 'https://discord.supabase.com',
+          className: 'navbar-item-discord',
           position: 'right',
         },
         {

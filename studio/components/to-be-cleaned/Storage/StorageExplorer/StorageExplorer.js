@@ -1,4 +1,4 @@
-import { FC, useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { observer } from 'mobx-react-lite'
 import { compact, find, isEmpty, uniqBy, get } from 'lodash'
 
@@ -47,8 +47,8 @@ const StorageExplorer = observer(({ bucket }) => {
     loadExplorerPreferences,
     addNewFolderPlaceholder,
     addNewFolder,
-    deleteBucket,
     fetchFolderContents,
+    fetchMoreFolderContents,
     fetchFoldersByPath,
     renameFolder,
     deleteFolder,
@@ -72,6 +72,32 @@ const StorageExplorer = observer(({ bucket }) => {
   const previewPaneWidth = 450
   // Requires a fixed height to ensure that explorer is constrained to the viewport
   const fileExplorerHeight = window.innerHeight - 122
+
+  useEffect(async () => {
+    const currentFolderIdx = openedFolders.length - 1
+    const currentFolder = openedFolders[currentFolderIdx]
+
+    if (itemSearchString) {
+      if (!currentFolder) {
+        // At root of bucket
+        await fetchFolderContents(bucket.id, bucket.name, -1, itemSearchString)
+      } else {
+        await fetchFolderContents(
+          currentFolder.id,
+          currentFolder.name,
+          currentFolderIdx,
+          itemSearchString
+        )
+      }
+    } else {
+      if (!currentFolder) {
+        // At root of bucket
+        await fetchFolderContents(bucket.id, bucket.name, -1)
+      } else {
+        await fetchFolderContents(currentFolder.id, currentFolder.name, currentFolderIdx)
+      }
+    }
+  }, [itemSearchString])
 
   useEffect(() => {
     // Load user preferences (view and sort)
@@ -207,9 +233,6 @@ const StorageExplorer = observer(({ bucket }) => {
     if (selectedItemsToDelete.length === 1) {
       const [itemToDelete] = selectedItemsToDelete
       switch (itemToDelete.type) {
-        case STORAGE_ROW_TYPES.BUCKET:
-          await deleteBucket(itemToDelete)
-          break
         case STORAGE_ROW_TYPES.FOLDER:
           await deleteFolder(itemToDelete)
           break
@@ -247,7 +270,9 @@ const StorageExplorer = observer(({ bucket }) => {
 
   const onToggleSearch = (bool) => {
     setIsSearching(bool)
-    if (bool === false) setItemSearchString('')
+    if (bool === false) {
+      setItemSearchString('')
+    }
   }
 
   return (
@@ -255,8 +280,8 @@ const StorageExplorer = observer(({ bucket }) => {
       ref={storageExplorerRef}
       className="
         bg-bg-primary-light dark:bg-bg-primary-dark
-        border border-panel-border-light dark:border-panel-border-dark
-        w-full h-full rounded-md flex flex-col"
+        border-panel-border-light dark:border-panel-border-dark flex
+        h-full w-full flex-col rounded-md border"
     >
       {selectedItems.length === 0 ? (
         <FileExplorerHeader
@@ -293,8 +318,6 @@ const StorageExplorer = observer(({ bucket }) => {
           openedFolders={openedFolders}
           selectedItems={selectedItems}
           selectedFilePreview={selectedFilePreview}
-          isSearching={isSearching}
-          itemSearchString={itemSearchString}
           onCheckItem={onCheckItem}
           onSelectFile={onSelectFile}
           onRenameFile={onRenameFile}
@@ -312,6 +335,9 @@ const StorageExplorer = observer(({ bucket }) => {
           onSelectCreateFolder={onSelectCreateFolder}
           onChangeView={onChangeView}
           onChangeSortBy={onChangeSortBy}
+          onColumnLoadMore={(index, column) =>
+            fetchMoreFolderContents(index, column, itemSearchString)
+          }
         />
         <PreviewPane
           isOpen={!isEmpty(selectedFilePreview)}

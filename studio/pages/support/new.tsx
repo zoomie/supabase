@@ -2,7 +2,6 @@ import { useEffect, useReducer, useState } from 'react'
 import { observer } from 'mobx-react-lite'
 import {
   Button,
-  Divider,
   IconArrowLeft,
   IconCheck,
   IconMail,
@@ -10,18 +9,26 @@ import {
   Listbox,
   Typography,
 } from '@supabase/ui'
-import SVG from 'react-inlinesvg'
-import toast from 'react-hot-toast'
-import Link from 'next/link'
+import Divider from 'components/ui/Divider'
 
-import { API_URL } from 'lib/constants'
+import SVG from 'react-inlinesvg'
+import Link from 'next/link'
+import { useRouter } from 'next/router'
+
+import { API_URL, PRICING_TIER_PRODUCT_IDS } from 'lib/constants'
 import { useStore, withAuth } from 'hooks'
-import { post } from 'lib/common/fetch'
+import { post, get } from 'lib/common/fetch'
 import { Project } from 'types'
+import { isUndefined } from 'lodash'
+import Connecting from 'components/ui/Loading/Loading'
 
 const DEFAULT = {
   category: {
     value: 'Problem',
+    error: '',
+  },
+  severity: {
+    value: 'Low',
     error: '',
   },
   project: {
@@ -38,6 +45,65 @@ const DEFAULT = {
   },
 }
 
+/*
+ * Move this to schema files
+ */
+const categoryOptions = [
+  {
+    value: 'Problem',
+    label: 'Issue with project / API / Client library / REST API',
+    description: 'Issues with project API, client libraries',
+  },
+  {
+    value: 'Sales',
+    label: 'Sales enquiry',
+    description: 'Questions about pricing, paid plans and Enterprise plans',
+  },
+  {
+    value: 'Billing',
+    label: 'Billing',
+    description: 'Issues with credit card charges | invoices | overcharing',
+  },
+  {
+    value: 'Abuse',
+    label: 'Abuse report',
+    description: 'Report abuse of a Supabase project or Supabase brand',
+  },
+  {
+    value: 'Refund',
+    label: 'Refund enquiry',
+    description: 'Formal enquiry form for requesting refunds',
+  },
+]
+
+const severityOptions = [
+  {
+    value: 'Low',
+    label: 'Low',
+    description: 'General guidance',
+  },
+  {
+    value: 'Normal',
+    label: 'Normal',
+    description: 'System impaired',
+  },
+  {
+    value: 'High',
+    label: 'High',
+    description: 'Production system impaired',
+  },
+  {
+    value: 'Urgent',
+    label: 'Urgent',
+    description: 'Production system down',
+  },
+  {
+    value: 'Critical',
+    label: 'Critical',
+    description: 'Business-critical system down (Unavailable for free projects)',
+  },
+]
+
 function formReducer(state: any, action: any) {
   return {
     ...state,
@@ -49,7 +115,11 @@ function formReducer(state: any, action: any) {
 }
 
 const SupportNew = () => {
-  const { app } = useStore()
+  const { ui, app } = useStore()
+  const router = useRouter()
+  const projectRef = router.query.ref
+  const category = router.query.category
+
   const [formState, formDispatch] = useReducer(formReducer, DEFAULT)
   const [errors, setErrors] = useState<any>([])
   const [loading, setLoading] = useState<boolean>(false)
@@ -68,48 +138,35 @@ const SupportNew = () => {
     },
   ]
 
+  const isInitialized = app.projects.isInitialized
   const projects = [...sortedProjects, ...projectDefaults]
 
   useEffect(() => {
-    // set project default
-    if (sortedProjects.length > 1) {
-      handleOnChange({ name: 'project', value: sortedProjects[0].ref })
-    } else {
-      // set as 'No specific project'
-      handleOnChange({ name: 'project', value: projectDefaults[0].ref })
-    }
-  }, [])
+    if (isInitialized) {
+      // set project default
+      if (sortedProjects.length > 1) {
+        const selectedProject = sortedProjects.find(
+          (project: Project) => project.ref === projectRef
+        )
+        if (!isUndefined(selectedProject)) {
+          handleOnChange({ name: 'project', value: selectedProject.ref })
+        } else {
+          handleOnChange({ name: 'project', value: sortedProjects[0].ref })
+        }
+      } else {
+        // set as 'No specific project'
+        handleOnChange({ name: 'project', value: projectDefaults[0].ref })
+      }
 
-  /*
-   * Move this to schema files
-   */
-  const categoryOptions = [
-    {
-      value: 'Problem',
-      label: 'Issue with project / API / Client library / REST API',
-      description: 'Issues with project API, client libraries',
-    },
-    {
-      value: 'Sales',
-      label: 'Sales enquiry',
-      description: 'Questions about pricing, paid plans and Enterprise plans',
-    },
-    {
-      value: 'Billing',
-      label: 'Billing',
-      description: 'Issues with credit card charges | invoices | overcharing',
-    },
-    {
-      value: 'Abuse',
-      label: 'Abuse report',
-      description: 'Report abuse of a Supabase project or Supabase brand',
-    },
-    {
-      value: 'Refund',
-      label: 'Refund enquiry',
-      description: 'Formal enquiry form for requesting refunds',
-    },
-  ]
+      // Set category based on query param
+      if (category) {
+        const selectedCategory = categoryOptions.find((option) => {
+          if (option.value.toLowerCase() === category) return option
+        })
+        if (selectedCategory) handleOnChange({ name: 'category', value: selectedCategory.value })
+      }
+    }
+  }, [isInitialized])
 
   function handleOnChange(x: any) {
     formDispatch({
@@ -117,6 +174,20 @@ const SupportNew = () => {
       value: x.value,
       error: x.error,
     })
+    // Reset severity value when changing project to prevent selection of Critical
+    if (x.name === 'project') {
+      const selectedProject = projects.find((project: any) => project.ref === x.value)
+      if (
+        (selectedProject?.subscription_tier ?? PRICING_TIER_PRODUCT_IDS.FREE) === PRICING_TIER_PRODUCT_IDS.FREE &&
+        formState.severity.value === 'Critical'
+      ) {
+        formDispatch({
+          name: 'severity',
+          value: 'Low',
+          error: '',
+        })
+      }
+    }
   }
 
   async function handleSubmit(e: any) {
@@ -139,21 +210,39 @@ const SupportNew = () => {
     setErrors([...errors])
 
     if (errors.length === 0) {
-      setLoading(true)
-      const response = await post(`${API_URL}/feedback/send`, {
+      const projectRef = formState.project.value
+      const payload = {
+        projectRef,
         message: formState.body.value,
         category: formState.category.value,
-        projectRef: formState.project.value,
         verified: true,
         tags: ['dashboard-support-form'],
         subject: formState.subject.value,
-      })
+        severity: formState.severity.value,
+        siteUrl: '',
+        additionalRedirectUrls: '',
+      }
+
+      if (projectRef !== 'no-project') {
+        const URL = `${API_URL}/auth/${projectRef}/config`
+        const authConfig = await get(URL)
+        if (!authConfig.error) {
+          payload.siteUrl = authConfig.SITE_URL
+          payload.additionalRedirectUrls = authConfig.URI_ALLOW_LIST
+        }
+      }
+
+      setLoading(true)
+      const response = await post(`${API_URL}/feedback/send`, payload)
       setLoading(false)
+
       if (response.error) {
-        console.error(response.error)
-        toast.error(response.error.message)
+        ui.setNotification({
+          category: 'error',
+          message: `Failed to submit support ticket: ${response.error.message}`,
+        })
       } else {
-        toast.success(`Support request sent. Thank you!`)
+        ui.setNotification({ category: 'success', message: 'Support request sent. Thank you!' })
         setSent(true)
       }
     }
@@ -179,6 +268,8 @@ const SupportNew = () => {
       </div>
     )
   }
+
+  if (!isInitialized) return <Connecting />
 
   return (
     <div className="flex h-screen relative overflow-y-auto overflow-x-hidden">
@@ -264,6 +355,41 @@ const SupportNew = () => {
                                     {organization?.name}
                                   </span>
                                 </div>
+                              )
+                            }}
+                          />
+                        )
+                      })}
+                    </Listbox>
+                  </div>
+
+                  <div className="px-6">
+                    <Listbox
+                      value={formState.severity.value}
+                      label="Severity"
+                      layout="horizontal"
+                      onChange={(value) => handleOnChange({ name: 'severity', value })}
+                    >
+                      {severityOptions.map((option: any) => {
+                        const selectedProject = projects.find(
+                          (project: any) => project.ref === formState.project.value
+                        )
+                        const isAllowedCritical =
+                          (selectedProject?.subscription_tier ?? PRICING_TIER_PRODUCT_IDS.FREE) !== PRICING_TIER_PRODUCT_IDS.FREE
+                        return (
+                          <Listbox.Option
+                            key={`option-${option.value}`}
+                            label={option.label}
+                            value={option.value}
+                            disabled={option.value === 'Critical' && !isAllowedCritical}
+                            children={({ active, selected }: any) => {
+                              return (
+                                <>
+                                  <span>{option.label}</span>
+                                  <span className="opacity-50 block text-xs">
+                                    {option.description}
+                                  </span>
+                                </>
                               )
                             }}
                           />

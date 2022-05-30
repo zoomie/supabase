@@ -2,15 +2,16 @@ import { createContext, useContext } from 'react'
 import { makeAutoObservable } from 'mobx'
 import {
   find,
-  findIndex,
   compact,
   isEqual,
   isNull,
-  has,
+  isNil,
   isUndefined,
+  has,
   some,
   chunk,
   get,
+  uniq,
 } from 'lodash'
 import toast from 'react-hot-toast'
 import { createClient } from '@supabase/supabase-js'
@@ -21,7 +22,7 @@ import {
   STORAGE_ROW_STATUS,
   STORAGE_SORT_BY,
 } from 'components/to-be-cleaned/Storage/Storage.constants.ts'
-import { timeout } from 'lib/helpers'
+import { copyToClipboard } from 'lib/helpers'
 
 /**
  * This is a preferred method rather than React Context and useStorageExplorerStore().
@@ -41,7 +42,7 @@ export const useStorageExplorerStore = () => {
   return useContext(StorageExplorerContext)
 }
 
-const LIMIT = 100000
+const LIMIT = 200
 const OFFSET = 0
 const DEFAULT_EXPIRY = 10 * 365 * 24 * 60 * 60 // in seconds, default to 1 year
 const PREVIEW_SIZE_LIMIT = 10000000 // 10MB
@@ -62,6 +63,8 @@ class StorageExplorerStore {
   selectedItemsToDelete = []
   selectedItemsToMove = []
   selectedFilePreview = {}
+
+  DEFAULT_OPTIONS = { limit: LIMIT, offset: OFFSET, sortBy: { column: this.sortBy, order: 'asc' } }
 
   /* Supabase client */
   supabaseClient = null
@@ -93,18 +96,16 @@ class StorageExplorerStore {
 
   /* Methods which are commonly used + For better readability */
 
-  normalizeSupabaseURL(url) {
-    return url.replace(
-      process.env.NEXT_PUBLIC_CUSTOMER_DOMAIN,
-      process.env.NEXT_PUBLIC_ALT_CUSTOMER_DOMAIN
-    )
-  }
-
   initializeSupabaseClient = (serviceKey, serviceEndpoint) => {
-    this.supabaseClient = createClient(
-      this.normalizeSupabaseURL(`https://${serviceEndpoint}`),
-      serviceKey
-    )
+    this.supabaseClient = createClient(`https://${serviceEndpoint}`, serviceKey, {
+      localStorage: {
+        getItem: (key) => {
+          return undefined
+        },
+        setItem: (key, value) => {},
+        removeItem: (key) => {},
+      },
+    })
   }
 
   updateFileInPreviewCache = (fileCache) => {
@@ -224,6 +225,12 @@ class StorageExplorerStore {
     this.columns = this.columns.slice(0, index + 1)
   }
 
+  setColumnIsLoadingMore = (index, isLoadingMoreItems = true) => {
+    this.columns = this.columns.map((col, idx) => {
+      return idx === index ? { ...col, isLoadingMoreItems } : col
+    })
+  }
+
   pushOpenedFolderAtIndex = (folder, index) => {
     this.openedFolders = this.openedFolders.slice(0, index).concat(folder)
   }
@@ -265,21 +272,31 @@ class StorageExplorerStore {
   }
 
   addNewFolderPlaceholder = (columnIndex) => {
+    const isPrepend = true
     const folderName = 'Untitled folder'
     const folderType = STORAGE_ROW_TYPES.FOLDER
     const columnIdx = columnIndex === -1 ? this.getLatestColumnIndex() : columnIndex
-    this.addTempRow(folderType, folderName, STORAGE_ROW_STATUS.EDITING, columnIdx)
+    this.addTempRow(folderType, folderName, STORAGE_ROW_STATUS.EDITING, columnIdx, {}, isPrepend)
   }
 
   addNewFolder = async (folderName, columnIndex) => {
     const autofix = false
     const formattedName = this.sanitizeNameForDuplicateInColumn(folderName, autofix, columnIndex)
+
     if (isNull(formattedName)) {
       return
+    }
+    /**
+     * todo: move this to a util file, as renameFolder() uses same logic
+     */
+    if (formattedName.includes('/') || formattedName.includes('\\')) {
+      return toast.error('Folder names should not have forward or back slashes.')
     }
     if (formattedName.length === 0) {
       return this.removeTempRows(columnIndex)
     }
+
+    this.updateFolderAfterEdit(formattedName, columnIndex)
 
     const emptyPlaceholderFile = `${formattedName}/${EMPTY_FOLDER_PLACEHOLDER_FILE_NAME}`
     const pathToFolder = this.openedFolders
@@ -292,13 +309,12 @@ class StorageExplorerStore {
     await this.supabaseClient.storage
       .from(this.selectedBucket.name)
       .upload(formattedPathToEmptyPlaceholderFile, new File([], EMPTY_FOLDER_PLACEHOLDER_FILE_NAME))
+
     if (pathToFolder.length > 0) {
       await this.supabaseClient.storage
         .from(this.selectedBucket.name)
         .remove([`${pathToFolder}/${EMPTY_FOLDER_PLACEHOLDER_FILE_NAME}`])
     }
-
-    this.updateFolderAfterEdit(formattedName, columnIndex)
   }
 
   setFilePreview = async (file) => {
@@ -324,7 +340,6 @@ class StorageExplorerStore {
         this.selectedFilePreview = { ...file, previewUrl: cachedPreview.url }
       } else {
         const previewUrl = await this.fetchFilePreview(file.name)
-
         const formattedPreviewUrl = this.selectedBucket.public
           ? `${previewUrl}?t=${new Date().toISOString()}`
           : previewUrl
@@ -355,32 +370,41 @@ class StorageExplorerStore {
     const filePreview = find(this.filePreviewCache, { id: file.id })
     if (filePreview) {
       // Already generated signed URL
-      window.navigator?.clipboard?.writeText(filePreview.url)
+      copyToClipboard(filePreview.url, () => {
+        toast(`Copied URL for ${file.name} to clipboard.`)
+      })
     } else {
       // Need to generate signed URL, and might as well save it to cache as well
       const signedUrl = await this.fetchFilePreview(file.name)
-      window.navigator?.clipboard?.writeText(signedUrl)
+      let formattedUrl = new URL(signedUrl)
+      formattedUrl.searchParams.set('t', new Date().toISOString())
 
+      copyToClipboard(formattedUrl.toString(), () => {
+        toast(`Copied URL for ${file.name} to clipboard.`)
+      })
       const fileCache = {
         id: file.id,
-        url: signedUrl,
+        url: formattedUrl.toString(),
         expiresIn: DEFAULT_EXPIRY,
         fetchedAt: Date.now(),
       }
       this.addFileToPreviewCache(fileCache)
     }
-    toast(`Copied URL for ${file.name} to clipboard.`)
   }
 
   /* Methods that involve the storage client library */
   /* Bucket CRUD */
 
   createBucket = async (bucketName, isPublic = false) => {
+    if (isNil(this.supabaseClient)) {
+      return toast.error('Failed to initialize supabase client, try refreshing your browser.')
+    }
+
     const { error } = await this.supabaseClient.storage.createBucket(bucketName, {
       public: isPublic,
     })
     if (error) {
-      toast(error.message)
+      toast.error(error.message)
       return this.closeCreateBucketModal()
     }
 
@@ -412,13 +436,18 @@ class StorageExplorerStore {
     // Deleting a bucket requires the bucket to be empty first
     // hence delete bucket and empty bucket are coupled tightly here
     const { id, name: bucketName } = bucket
-    const bucketIndex = findIndex(this.buckets, { id })
 
     const { error: emptyBucketError } = await this.supabaseClient.storage.emptyBucket(id)
-    if (emptyBucketError) toast(emptyBucketError.message)
+    if (emptyBucketError) {
+      toast(emptyBucketError.message)
+      return false
+    }
 
     const { error: deleteBucketError } = await this.supabaseClient.storage.deleteBucket(id)
-    if (deleteBucketError) toast(deleteBucketError.message)
+    if (deleteBucketError) {
+      toast(deleteBucketError.message)
+      return false
+    }
 
     await this.fetchBuckets()
     if (bucketName === this.selectedBucket.name) {
@@ -428,6 +457,7 @@ class StorageExplorerStore {
     }
     this.clearSelectedItemsToDelete()
     this.closeDeleteBucketModal()
+    return true
   }
 
   toggleBucketPublic = async (bucket) => {
@@ -455,6 +485,7 @@ class StorageExplorerStore {
       return await new Promise((resolve, reject) => fileEntry.file(resolve, reject))
     } catch (err) {
       console.error('getFile error:', err)
+      return undefined
     }
   }
 
@@ -470,8 +501,10 @@ class StorageExplorerStore {
       const entry = queue.shift() || {}
       if (entry.isFile) {
         const file = await this.getFile(entry)
-        file.path = entry.fullPath.slice(1)
-        files.push(file)
+        if (!isUndefined(file)) {
+          file.path = entry.fullPath.slice(1)
+          files.push(file)
+        }
       } else if (entry.isDirectory) {
         queue.push(...(await this.readAllDirectoryEntries(entry.createReader())))
       }
@@ -592,25 +625,22 @@ class StorageExplorerStore {
       }
 
       return () => {
-        return Promise.race([
-          new Promise(async (resolve) => {
-            const { error } = await this.supabaseClient.storage
-              .from(this.selectedBucket.name)
-              .upload(formattedPathToFile, file, fileOptions)
+        return new Promise(async (resolve) => {
+          const { error } = await this.supabaseClient.storage
+            .from(this.selectedBucket.name)
+            .upload(formattedPathToFile, file, fileOptions)
 
-            this.uploadProgress = this.uploadProgress + 1 / formattedFilesToUpload.length
+          this.uploadProgress = this.uploadProgress + 1 / formattedFilesToUpload.length
 
-            if (error) {
-              numberOfFilesUploadedFail += 1
-              toast.error(`Failed to upload ${file.name}: ${error.message}`)
-              resolve()
-            } else {
-              numberOfFilesUploadedSuccess += 1
-              resolve()
-            }
-          }),
-          timeout(30000),
-        ])
+          if (error) {
+            numberOfFilesUploadedFail += 1
+            toast.error(`Failed to upload ${file.name}: ${error.message}`)
+            resolve()
+          } else {
+            numberOfFilesUploadedSuccess += 1
+            resolve()
+          }
+        })
       }
     })
 
@@ -747,7 +777,7 @@ class StorageExplorerStore {
     return null
   }
 
-  deleteFiles = async (files, showToast = true) => {
+  deleteFiles = async (files, isDeleteFolder = false) => {
     this.closeFilePreview()
 
     // If every file has the 'prefix' property, then just construct the prefix
@@ -781,12 +811,22 @@ class StorageExplorerStore {
     )
     this.filePreviewCache = updatedFilePreviewCache
 
-    if (showToast) {
-      toast.success(`Successfully deleted ${prefixes.length} file(s)`)
-    }
+    if (!isDeleteFolder) {
+      // If parent folders are empty, reinstate .emptyFolderPlaceholder to persist them
+      const parentFolderPrefixes = uniq(
+        prefixes.map((prefix) => {
+          const segments = prefix.split('/')
+          return segments.slice(0, segments.length - 1).join('/')
+        })
+      )
+      await Promise.all(
+        parentFolderPrefixes.map((prefix) => this.validateParentFolderEmpty(prefix))
+      )
 
-    await this.refetchAllOpenedFolders()
-    this.clearSelectedItemsToDelete()
+      toast.success(`Successfully deleted ${prefixes.length} file(s)`)
+      await this.refetchAllOpenedFolders()
+      this.clearSelectedItemsToDelete()
+    }
   }
 
   downloadSelectedFiles = async () => {
@@ -886,35 +926,75 @@ class StorageExplorerStore {
 
   /* Folders CRUD */
 
-  fetchFolderContents = async (folderId, folderName, index, showLoading = true) => {
+  fetchFolderContents = async (folderId, folderName, index, searchString = '') => {
     this.abortApiCalls()
 
-    if (showLoading) {
-      this.updateRowStatus(folderName, STORAGE_ROW_STATUS.LOADING, index)
-      this.pushColumnAtIndex(
-        { id: folderId, name: folderName, status: STORAGE_ROW_STATUS.LOADING, items: [] },
-        index
-      )
-    }
+    this.updateRowStatus(folderName, STORAGE_ROW_STATUS.LOADING, index)
+    this.pushColumnAtIndex(
+      { id: folderId, name: folderName, status: STORAGE_ROW_STATUS.LOADING, items: [] },
+      index
+    )
 
     const prefix = this.openedFolders.map((folder) => folder.name).join('/')
-    const options = { limit: LIMIT, offset: OFFSET, sortBy: { column: this.sortBy, order: 'asc' } }
+    const options = {
+      limit: LIMIT,
+      offset: OFFSET,
+      search: searchString,
+      sortBy: { column: this.sortBy, order: 'asc' },
+    }
     const parameters = { signal: this.abortController.signal }
 
     const { data: items, error } = await this.supabaseClient.storage
       .from(this.selectedBucket.name)
       .list(prefix, options, parameters)
 
-    if (showLoading) {
-      this.updateRowStatus(folderName, STORAGE_ROW_STATUS.READY, index)
-    }
+    this.updateRowStatus(folderName, STORAGE_ROW_STATUS.READY, index)
 
     if (!error) {
       const formattedItems = this.formatFolderItems(items)
       this.pushColumnAtIndex(
-        { id: folderId || folderName, name: folderName, items: formattedItems },
+        {
+          id: folderId || folderName,
+          name: folderName,
+          items: formattedItems,
+          hasMoreItems: formattedItems.length === LIMIT,
+          isLoadingMoreItems: false,
+        },
         index
       )
+    }
+  }
+
+  fetchMoreFolderContents = async (index, column, searchString = '') => {
+    this.setColumnIsLoadingMore(index)
+
+    const prefix = this.openedFolders.map((folder) => folder.name).join('/')
+    const options = {
+      limit: LIMIT,
+      offset: column.items.length,
+      search: searchString,
+      sortBy: { column: this.sortBy, order: 'asc' },
+    }
+    const parameters = { signal: this.abortController.signal }
+
+    const { data: items, error } = await this.supabaseClient.storage
+      .from(this.selectedBucket.name)
+      .list(prefix, options, parameters)
+
+    if (!error) {
+      // Add items to column
+      const formattedItems = this.formatFolderItems(items)
+      this.columns = this.columns.map((col, idx) => {
+        if (idx === index) {
+          return {
+            ...col,
+            items: col.items.concat(formattedItems),
+            isLoadingMoreItems: false,
+            hasMoreItems: items.length === LIMIT,
+          }
+        }
+        return col
+      })
     }
   }
 
@@ -953,6 +1033,8 @@ class StorageExplorerStore {
         id: null,
         name: idx === 0 ? this.selectedBucket.name : pathsWithEmptyPrefix[idx],
         items: formattedItems,
+        hasMoreItems: formattedItems.length === LIMIT,
+        isLoadingMoreItems: false,
       }
     })
 
@@ -976,21 +1058,56 @@ class StorageExplorerStore {
     this.openedFolders = updatedOpenedFolders
   }
 
-  deleteFolder = async (folder) => {
-    const files = await this.getAllItemsAlongFolder(folder)
-    const showFilesDeleteToast = false
+  // Check parent folder if its empty, if yes, reinstate .emptyFolderPlaceholder
+  // Used when deleting folder or deleting files
+  validateParentFolderEmpty = async (parentFolderPrefix) => {
+    const { data: items, error } = await this.supabaseClient.storage
+      .from(this.selectedBucket.name)
+      .list(parentFolderPrefix, this.DEFAULT_OPTIONS)
+    if (!error && items.length === 0) {
+      const prefixToPlaceholder = `${parentFolderPrefix}/${EMPTY_FOLDER_PLACEHOLDER_FILE_NAME}`
+      await this.supabaseClient.storage
+        .from(this.selectedBucket.name)
+        .upload(prefixToPlaceholder, new File([], EMPTY_FOLDER_PLACEHOLDER_FILE_NAME))
+    }
+  }
 
-    await this.deleteFiles(files, showFilesDeleteToast)
+  deleteFolder = async (folder) => {
+    const isDeleteFolder = true
+    const files = await this.getAllItemsAlongFolder(folder)
+    await this.deleteFiles(files, isDeleteFolder)
+
+    const parentFolderPrefix = this.openedFolders.map((folder) => folder.name).join('/')
+    if (parentFolderPrefix.length > 0) {
+      await this.validateParentFolderEmpty(parentFolderPrefix)
+    }
+
+    await this.refetchAllOpenedFolders()
+    this.clearSelectedItemsToDelete()
     toast.success(`Successfully deleted ${folder.name}`)
   }
 
   renameFolder = async (folder, newName, columnIndex) => {
     const originalName = folder.name
+
+    /**
+     * Catch any folder names that contain slash or backslash
+     *
+     * this is because slashes are used to denote
+     * children/parent relationships in bucket
+     *
+     * todo: move this to a util file, as createFolder() uses same logic
+     */
+    if (newName.includes('/') || newName.includes('\\')) {
+      return toast.error('Folder names should not have forward or back slashes.')
+    }
+
     if (originalName === newName) {
       this.updateRowStatus(originalName, STORAGE_ROW_STATUS.READY, columnIndex)
     } else {
       this.updateRowStatus(originalName, STORAGE_ROW_STATUS.LOADING, columnIndex, newName)
       const files = await this.getAllItemsAlongFolder(folder)
+
       // Make this batched promises into a reusable function for storage, i think this will be super helpful
       const promises = files.map((file) => {
         const fromPath = `${file.prefix}/${file.name}`
@@ -1130,11 +1247,13 @@ class StorageExplorerStore {
     return formattedItems
   }
 
-  addTempRow = (type, name, status, columnIndex, metadata = {}) => {
+  addTempRow = (type, name, status, columnIndex, metadata = {}, isPrepend = false) => {
     const updatedColumns = this.columns.map((column, idx) => {
       if (idx === columnIndex) {
         const tempRow = { type, name, status, metadata }
-        const updatedItems = column.items.concat([tempRow])
+        const updatedItems = isPrepend
+          ? [tempRow].concat(column.items)
+          : column.items.concat([tempRow])
         return { ...column, items: updatedItems }
       }
       return column

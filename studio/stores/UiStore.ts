@@ -1,22 +1,25 @@
 import { uuidv4 } from 'lib/helpers'
 import { action, makeAutoObservable } from 'mobx'
-import { Project, Notification, User, Organization } from 'types'
+import { Project, Notification, User, Organization, ProjectBase } from 'types'
 import { IRootStore } from './RootStore'
 import Telemetry from 'lib/telemetry'
 
 export interface IUiStore {
   language: 'en_US'
   theme: 'dark' | 'light'
+  themeOption: 'dark' | 'light' | 'system'
 
+  selectedProjectRef?: string
   isDarkTheme: boolean
   selectedProject?: Project
+  selectedProjectBaseInfo?: ProjectBase
   selectedOrganization?: Organization
   notification?: Notification
   profile?: User
 
   load: () => void
-  toggleTheme: () => void
   setTheme: (theme: 'dark' | 'light') => void
+  onThemeOptionChange: (themeOption: 'dark' | 'light' | 'system') => void
   setProjectRef: (ref?: string) => void
   setOrganizationSlug: (slug?: string) => void
   setNotification: (notification: Notification) => string
@@ -26,6 +29,7 @@ export default class UiStore implements IUiStore {
   rootStore: IRootStore
   language: 'en_US' = 'en_US'
   theme: 'dark' | 'light' = 'dark'
+  themeOption: 'dark' | 'light' | 'system' = 'dark'
 
   selectedProjectRef?: string
   selectedOrganizationSlug?: string
@@ -40,12 +44,31 @@ export default class UiStore implements IUiStore {
     })
   }
 
+  /**
+   * we use this getter to check for project ready.
+   * Only return selectedProject when it has full detail
+   * like connectionString prop
+   *
+   * @returns Project or undefined
+   */
   get selectedProject() {
     if (this.selectedProjectRef) {
       const found = this.rootStore.app.projects.find(
         (x: Project) => x.ref == this.selectedProjectRef
       )
-      return found
+      return !!found?.connectionString ? found : undefined
+    }
+    return undefined
+  }
+
+  /**
+   * Get selected project base info.
+   *
+   * @return ProjectBase or undefined
+   */
+  get selectedProjectBaseInfo(): ProjectBase | undefined {
+    if (this.selectedProjectRef) {
+      return this.rootStore.app.projects.find((x: Project) => x.ref == this.selectedProjectRef)
     }
     return undefined
   }
@@ -73,22 +96,37 @@ export default class UiStore implements IUiStore {
 
   load() {
     if (typeof window === 'undefined') return
-    const savedTheme = (window.localStorage.getItem('theme') ?? 'dark') as 'dark' | 'light'
-    this.setTheme(savedTheme)
-  }
-
-  toggleTheme() {
-    if (this.theme === 'dark') {
-      this.setTheme('light')
-    } else {
-      this.setTheme('dark')
+    const localStorageThemeOption = window.localStorage.getItem('theme')
+    if (localStorageThemeOption === 'system') {
+      this.themeOption = localStorageThemeOption
+      return this.setTheme(
+        window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      )
     }
+    if (localStorageThemeOption === 'light') {
+      this.themeOption = localStorageThemeOption
+      return this.setTheme('light')
+    }
+    window.localStorage.setItem('theme', 'dark')
+    this.themeOption = 'dark'
+    this.setTheme('dark')
   }
 
   setTheme(theme: 'dark' | 'light') {
     this.theme = theme
-    window.localStorage.setItem('theme', theme)
     document.body.className = theme
+  }
+
+  onThemeOptionChange(themeOption: 'dark' | 'light' | 'system') {
+    this.themeOption = themeOption
+    if (themeOption === 'system') {
+      window.localStorage.setItem('theme', 'system')
+      return this.setTheme(
+        window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'
+      )
+    }
+    window.localStorage.setItem('theme', themeOption)
+    this.setTheme(themeOption)
   }
 
   setProjectRef(ref?: string) {
@@ -106,12 +144,10 @@ export default class UiStore implements IUiStore {
   }
 
   setProfile(value?: User) {
-    if (value?.id != this.profile?.id) {
-      this.profile = value
-
-      if (value) {
-        Telemetry.sendIdentify(value)
-      }
+    if (value && value?.id !== this.profile?.id) {
+      Telemetry.sendIdentify(value)
     }
+
+    this.profile = value
   }
 }

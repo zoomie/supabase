@@ -4,16 +4,19 @@ import { useRouter } from 'next/router'
 import { observer, useLocalObservable } from 'mobx-react-lite'
 import { makeAutoObservable } from 'mobx'
 import { debounce } from 'lodash'
-import { Button, Typography } from '@supabase/ui'
+import { Button, Input, Listbox, Typography } from '@supabase/ui'
 import { Dictionary } from '@supabase/grid'
 
+import { useStore } from 'hooks'
 import { post } from 'lib/common/fetch'
+import { passwordStrength } from 'lib/helpers'
 import {
   PROVIDERS,
   REGIONS,
   REGIONS_DEFAULT,
   DEFAULT_MINIMUM_PASSWORD_STRENGTH,
   API_URL,
+  PRICING_TIER_PRODUCT_IDS,
 } from 'lib/constants'
 import { VERCEL_INTEGRATION_CONFIGS } from 'lib/vercelConfigs'
 import {
@@ -21,16 +24,9 @@ import {
   fetchVercelProject,
   prepareVercelEvns,
 } from 'components/to-be-cleaned/Integration/Vercel.utils'
-import Loading from 'components/ui/Loading'
 import VercelIntegrationLayout from 'components/layouts/VercelIntegrationLayout'
-
-const PASSWORD_STRENGTH = {
-  0: "That's terrible.",
-  1: 'Pathetic.',
-  2: 'Weak.',
-  3: 'Not bad. Can you do better?',
-  4: "Strong. Let's get started!",
-}
+import Loading from 'components/ui/Loading'
+import PasswordStrengthBar from 'components/ui/PasswordStrengthBar'
 
 interface ISetupProjectStore {
   token: string
@@ -153,6 +149,8 @@ const Connecting = () => (
 const CreateProject = observer(() => {
   const _store = useContext(PageContext)
   const router = useRouter()
+  const { ui } = useStore()
+
   const [projectName, setProjectName] = useState('')
   const [dbPass, setDbPass] = useState('')
   const [passwordStrengthMessage, setPasswordStrengthMessage] = useState('')
@@ -162,6 +160,7 @@ const CreateProject = observer(() => {
   const delayedCheckPasswordStrength = useRef(
     debounce((value: string) => checkPasswordStrength(value), 300)
   ).current
+
   const canSubmit =
     projectName != '' &&
     passwordStrengthScore >= DEFAULT_MINIMUM_PASSWORD_STRENGTH &&
@@ -181,41 +180,29 @@ const CreateProject = observer(() => {
     } else delayedCheckPasswordStrength(value)
   }
 
-  function onDbRegionChange(e: ChangeEvent<HTMLSelectElement>) {
-    setDbRegion(e.target.value)
+  function onDbRegionChange(value: string) {
+    setDbRegion(value)
   }
 
   async function checkPasswordStrength(value: string) {
-    let passwordStrength = ''
-    if (value && value !== '') {
-      const response = await post(`${API_URL}/profile/password-check`, { password: value })
-      if (!response.error) {
-        const { result } = response
-        const score = (PASSWORD_STRENGTH as any)[result.score]
-        const warning = result.feedback.warning ? `${result.feedback.warning}.` : ''
-        const suggestions = result.feedback?.suggestions
-          ? result.feedback.suggestions.join(' ')
-          : ''
-        passwordStrength = `${score} ${warning} ${suggestions}`
-        setPasswordStrengthScore(result.score)
-      }
-    }
-
-    setPasswordStrengthMessage(passwordStrength)
+    const { message, strength } = await passwordStrength(value)
+    setPasswordStrengthScore(strength)
+    setPasswordStrengthMessage(message)
   }
 
   async function createSupabaseProject(dbSql: string) {
     const data = {
       cloud_provider: PROVIDERS.AWS.id, // hardcoded for DB instances to be under AWS
-      org_id: _store.supabaseOrgId,
+      org_id: Number(_store.supabaseOrgId),
       name: projectName,
       db_pass: dbPass,
       db_region: dbRegion,
       db_sql: dbSql || '',
+      db_pricing_tier_id: PRICING_TIER_PRODUCT_IDS.FREE,
       auth_site_url: _store.selectedVercelProjectUrl,
       vercel_configuration_id: _store.configurationId,
     }
-    return await post(`${API_URL}/projects/new`, data)
+    return await post(`${API_URL}/projects`, data)
   }
 
   async function onCreateProject() {
@@ -230,16 +217,17 @@ const CreateProject = observer(() => {
       const response = await createSupabaseProject(dbSql)
       if (response.error) {
         setLoading(false)
-        toast.error(response.error.message)
+        ui.setNotification({
+          category: 'error',
+          message: `Failed to create project: ${response.error.message}`,
+        })
         return
       }
 
       const project = response
       _store.supabaseProjectRef = project.ref
 
-      // console.log('new project', project)
       const envs = prepareVercelEvns(requiredEnvs, project)
-      // console.log('envs', envs)
 
       await Promise.allSettled(
         envs.map(async (env: any) => {
@@ -267,76 +255,64 @@ const CreateProject = observer(() => {
 
   return (
     <div className="">
-      <Typography.Title level={3}>Project details for integration</Typography.Title>
+      <p className="mb-2">Project details for integration</p>
       <div className="py-2">
-        <label htmlFor="projectName" className="block w-full text-base normal-case">
-          Project name
-        </label>
-        <div className="mt-1">
-          <input
-            type="text"
-            name="projectName"
-            id="projectName"
-            value={projectName}
-            onChange={onProjectNameChange}
-            placeholder="Project name"
-            className="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"
-          />
-        </div>
+        <Input
+          autoFocus
+          id="projectName"
+          label="Project name"
+          type="text"
+          placeholder=""
+          descriptionText=""
+          value={projectName}
+          onChange={onProjectNameChange}
+        />
       </div>
       <div className="py-2">
-        <label htmlFor="dbPass" className="block w-full text-base normal-case">
-          Database password
-        </label>
-        <div className="mt-1">
-          <input
-            type="password"
-            name="dbPass"
-            id="dbPass"
-            value={dbPass}
-            onChange={onDbPassChange}
-            placeholder="· · · · · · · · · · · · ·"
-            className="shadow-sm focus:ring-green-500 focus:border-green-500 block w-full sm:text-sm border-gray-300 rounded-md"
-          />
-          {passwordStrengthMessage && (
-            <Typography.Text type="secondary">
-              <p className="py-2">{passwordStrengthMessage}</p>
-            </Typography.Text>
-          )}
-          {passwordStrengthScore >= 0 && passwordStrengthScore < DEFAULT_MINIMUM_PASSWORD_STRENGTH && (
-            <Typography.Text type="danger">
-              <p>You need a stronger password</p>
-            </Typography.Text>
-          )}
-        </div>
+        <Input
+          id="dbPass"
+          label="Database Password"
+          type="password"
+          placeholder="Type in a strong password"
+          value={dbPass}
+          onChange={onDbPassChange}
+          descriptionText={
+            <PasswordStrengthBar
+              passwordStrengthScore={passwordStrengthScore}
+              password={dbPass}
+              passwordStrengthMessage={passwordStrengthMessage}
+            />
+          }
+        />
       </div>
       <div className="py-2 pb-4">
-        <label htmlFor="projectName" className="block w-full text-base normal-case">
-          Database region
-        </label>
         <div className="mt-1">
-          <select
-            id="dbRegion"
-            name="dbRegion"
+          <Listbox
+            label="Region"
+            type="select"
             value={dbRegion}
             onChange={onDbRegionChange}
-            className="focus:ring-green-500 focus:border-green-500 relative block w-full rounded-md bg-transparent focus:z-10 sm:text-sm border-gray-300"
+            descriptionText="Select a region close to you for the best performance."
           >
-            {Object.keys(REGIONS).map((choice) => {
+            {Object.keys(REGIONS).map((option: string, i) => {
+              const label = Object.values(REGIONS)[i]
               return (
-                <option
-                  key={(REGIONS as any)[choice]}
-                  value={(REGIONS as any)[choice]}
-                  className="text-black"
+                <Listbox.Option
+                  key={option}
+                  label={label}
+                  value={label}
+                  addOnBefore={({ active, selected }: any) => (
+                    <img
+                      className="w-5 rounded-sm"
+                      src={`/img/regions/${Object.keys(REGIONS)[i]}.svg`}
+                    />
+                  )}
                 >
-                  {(REGIONS as any)[choice]}
-                </option>
+                  <span className="text-scale-1200">{label}</span>
+                </Listbox.Option>
               )
             })}
-          </select>
-          <Typography.Text type="secondary">
-            <p className="pt-2">Select a region close to you for the best performance.</p>
-          </Typography.Text>
+          </Listbox>
         </div>
       </div>
       <Button disabled={loading || !canSubmit} loading={loading} onClick={onCreateProject}>

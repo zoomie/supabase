@@ -1,3 +1,6 @@
+import { post } from 'lib/common/fetch'
+import { PASSWORD_STRENGTH, DEFAULT_MINIMUM_PASSWORD_STRENGTH, API_URL } from 'lib/constants'
+
 export const tryParseJson = (jsonString: any) => {
   try {
     let parsed = JSON.parse(jsonString)
@@ -45,8 +48,8 @@ export const timeout = (ms: number) => {
 
 export const getURL = () => {
   const url =
-    process?.env?.SITE_URL && process.env.SITE_URL !== ''
-      ? process.env.SITE_URL
+    process?.env?.NEXT_PUBLIC_SITE_URL && process.env.NEXT_PUBLIC_SITE_URL !== ''
+      ? process.env.NEXT_PUBLIC_SITE_URL
       : process?.env?.VERCEL_URL && process.env.VERCEL_URL !== ''
       ? process.env.VERCEL_URL
       : 'https://app.supabase.io'
@@ -54,7 +57,7 @@ export const getURL = () => {
 }
 
 /**
- * Gnerates a random string using alpha characters
+ * Generates a random string using alpha characters
  */
 export const makeRandomString = (length: number) => {
   var result = ''
@@ -100,7 +103,7 @@ export const pluckJsonSchemaFields = (jsonSchema: any, fields: any) => {
 }
 
 /**
- * before return to frontend, we should filter sensitive project props
+ * Before return to frontend, we should filter sensitive project props
  */
 export const filterSensitiveProjectProps = (project: any) => {
   project.db_user_supabase = undefined
@@ -152,3 +155,58 @@ export const snakeToCamel = (str: string) =>
   str.replace(/([-_][a-z])/g, (group: string) =>
     group.toUpperCase().replace('-', '').replace('_', '')
   )
+
+export const copyToClipboard = (str: string, callback = () => {}) => {
+  const focused = window.document.hasFocus()
+  if (focused) {
+    window.navigator?.clipboard?.writeText(str).then(callback)
+  } else {
+    console.warn('Unable to copy to clipboard')
+  }
+}
+
+export async function passwordStrength(value: string) {
+  let message = ''
+  let warning = ''
+  let strength = 0
+
+  if (value && value !== '') {
+    const response = await post(`${API_URL}/profile/password-check`, { password: value })
+    if (!response.error) {
+      const { result } = response
+      const score = (PASSWORD_STRENGTH as any)[result.score]
+      const suggestions = result.feedback?.suggestions ? result.feedback.suggestions.join(' ') : ''
+
+      // set message :string
+      message = `${score} ${suggestions}`
+
+      // set strength :number
+      strength = result.score
+
+      // warning message for anything below 4 strength :string
+      if (result.score < DEFAULT_MINIMUM_PASSWORD_STRENGTH) {
+        warning = `${
+          result?.feedback?.warning ? result?.feedback?.warning + '.' : ''
+        } You need a stronger password.`
+      }
+    }
+  }
+
+  return {
+    message,
+    warning,
+    strength,
+  }
+}
+
+export const detectBrowser = () => {
+  if (!navigator) return undefined
+
+  if (navigator.userAgent.indexOf('Chrome') !== -1) {
+    return 'Chrome'
+  } else if (navigator.userAgent.indexOf('Firefox') !== -1) {
+    return 'Firefox'
+  } else if (navigator.userAgent.indexOf('Safari') !== -1) {
+    return 'Safari'
+  }
+}

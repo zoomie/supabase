@@ -1,5 +1,6 @@
 <p align="center">
-    <img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/web/static/supabase-light-rounded-corner-background.svg"/>
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--light.svg?sanitize=true#gh-light-mode-only">
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--dark.svg?sanitize=true#gh-dark-mode-only">
 </p>
 
 ---
@@ -14,11 +15,13 @@
 - [x] Автоматично згенероване API
 - [x] Панель керування
 - [x] Сховище
-- [ ] Функції (незабаром)
+- [x] Функції
+
+![Supabase Dashboard](https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/github/supabase-dashboard.png)
 
 ## Документація
 
-Для отримання повної документації, перейдіть на [supabase.io/docs](https://supabase.com/docs)
+Для отримання повної документації, перейдіть на [supabase.com/docs](https://supabase.com/docs)
 
 ## Спільнота та Підтримка
 
@@ -47,7 +50,7 @@ Supabase – це поєднання відкритого програмного
 
 Supabase – це [хмарна платформа](https://app.supabase.io). Ви можете зареєструватися і почати використовувати її, нічого не встановлюючи. Ми досі продовжуємо покращувати зручність локальної розробки – це наш основний пріоритет, одночасно зі стабільністю платформи.
 
-![Architecture](https://supabase.com/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
+![Architecture](https://supabase.com/docs/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
 
 - [PostgreSQL](https://www.postgresql.org/) – це об'єктно-реляційна система керування базами даних з більш ніж 30 роками активної розробки, котра завоювали міцну репутацію завдяки надійності та продуктивності.
 - [Realtime](https://github.com/supabase/realtime) являє собою Elixir сервер який дозволяє слухати зміни в PostgreSQL за допомогою веб-сокетів. Supabase використовує вбудований функціонал реплікації Postgres, перетворюючи бінарний протокол реплікації в JSON та передаючи по веб-сокетам.

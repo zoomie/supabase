@@ -10,6 +10,7 @@ import NotFoundState from './NotFoundState'
 import GridHeaderActions from './GridHeaderActions'
 import SidePanelEditor from './SidePanelEditor'
 import { SchemaView } from 'components/layouts/TableEditorLayout/TableEditorLayout.types'
+import { SidePanel } from '@supabase/ui'
 
 interface Props {
   /** Theme for the editor */
@@ -138,7 +139,7 @@ const TableGridEditor: FC<Props> = ({
         schema={selectedTable.schema}
         table={gridTable}
         headerActions={
-          !isViewSelected && <GridHeaderActions table={selectedTable as PostgresTable} />
+          !isViewSelected && selectedTable.schema === 'public' && <GridHeaderActions table={selectedTable as PostgresTable} />
         }
         onAddColumn={onAddColumn}
         onEditColumn={onSelectEditColumn}

@@ -1,7 +1,6 @@
 import { FC, useEffect, useState } from 'react'
 import { isUndefined, partition, isEmpty } from 'lodash'
-import { toast } from 'react-hot-toast'
-import { Divider, SidePanel, Space, Typography } from '@supabase/ui'
+import { SidePanel } from '@supabase/ui'
 import { Dictionary, Query } from '@supabase/grid'
 import { PostgresTable } from '@supabase/postgres-meta'
 
@@ -47,6 +46,8 @@ const RowEditor: FC<Props> = ({
   const isNewRecord = isUndefined(row)
   const isEditingJson = !isUndefined(selectedValueForJsonEdit)
 
+  const [loading, setLoading] = useState(false)
+
   const [requiredFields, optionalFields] = partition(
     rowFields,
     (rowField: any) => !rowField.isNullable
@@ -77,7 +78,10 @@ const RowEditor: FC<Props> = ({
     // Possible low prio refactor: Shift fetching reference row retrieval to ReferenceRowViewer
     // in a useEffect, rather than trying to manage a loading state in this method
     if (!row.value) {
-      return toast.error(`Please enter a value in the ${row.name} field first`)
+      ui.setNotification({
+        category: 'error',
+        message: `Please enter a value in the ${row.name} field first`,
+      })
     }
     const foreignKey = row.foreignKey
     setReferenceRow({ loading: true, foreignKey, row: undefined })
@@ -109,12 +113,16 @@ const RowEditor: FC<Props> = ({
     }
   }
 
-  const onSaveChanges = (resolve: any) => {
+  const onSaveChanges = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+
     const errors = validateFields(rowFields)
     setErrors(errors)
+    setLoading(true)
 
     if (isEmpty(errors)) {
       updateEditorDirty()
+
       const payload = isNewRecord
         ? generateRowObjectFromFields(rowFields)
         : generateUpdateRowPayload(row, rowFields)
@@ -128,92 +136,101 @@ const RowEditor: FC<Props> = ({
         configuration.rowIdx = row!.idx
       }
 
-      saveChanges(payload, isNewRecord, configuration, resolve)
+      saveChanges(payload, isNewRecord, configuration, () => setLoading(false))
     } else {
-      resolve()
+      setLoading(false)
     }
   }
 
   return (
     <SidePanel
-      wide
+      size="large"
       key="RowEditor"
       visible={visible}
-      // @ts-ignore
-      title={<HeaderTitle isNewRecord={isNewRecord} tableName={selectedTable.name} />}
-      className={`transition-all ease-in duration-100 ${
+      header={<HeaderTitle isNewRecord={isNewRecord} tableName={selectedTable.name} />}
+      className={`transition-all duration-100 ease-in ${
         isEditingJson || isViewingReferenceRow ? ' mr-32' : ''
       }`}
       onCancel={closePanel}
-      onConfirm={(resolve: () => void) => onSaveChanges(resolve)}
-      customFooter={
-        <ActionBar
-          backButtonLabel="Cancel"
-          applyButtonLabel="Save"
-          closePanel={closePanel}
-          applyFunction={(resolve: any) => onSaveChanges(resolve)}
-        />
-      }
+      hideFooter
     >
-      <Space direction="vertical" size={6} style={{ width: '100%', marginBottom: '2rem' }}>
-        {requiredFields.map((field: RowField) => {
-          return (
-            <InputField
-              key={field.id}
-              field={field}
-              errors={errors}
-              onUpdateField={onUpdateField}
-              onEditJson={setSelectedValueForJsonEdit}
-              onViewForeignKey={() => onViewForeignKey(field)}
-            />
-          )
-        })}
-        {optionalFields.length > 0 && (
-          <>
-            <Divider light className="mb-4" />
-            <div>
-              <div>
-                <Typography.Text>Optional Fields</Typography.Text>
+      <form onSubmit={(e) => onSaveChanges(e)} className="h-full">
+        <div className="flex h-full flex-col">
+          <div className="flex flex-grow flex-col">
+            <SidePanel.Content>
+              <div className="space-y-10 py-6">
+                {requiredFields.map((field: RowField) => {
+                  return (
+                    <InputField
+                      key={field.id}
+                      field={field}
+                      errors={errors}
+                      onUpdateField={onUpdateField}
+                      onEditJson={setSelectedValueForJsonEdit}
+                      onViewForeignKey={() => onViewForeignKey(field)}
+                    />
+                  )
+                })}
               </div>
-              <Typography.Text type="secondary">
-                These are columns that do not need any value
-              </Typography.Text>
-            </div>
-          </>
-        )}
-        {optionalFields.map((field: RowField) => {
-          return (
-            <InputField
-              key={field.id}
-              field={field}
-              errors={errors}
-              onUpdateField={onUpdateField}
-              onEditJson={setSelectedValueForJsonEdit}
-              onViewForeignKey={() => onViewForeignKey(field)}
+            </SidePanel.Content>
+            {optionalFields.length > 0 && (
+              <>
+                <SidePanel.Seperator />
+                <SidePanel.Content>
+                  <div className="space-y-10 py-6">
+                    <div>
+                      <h3 className="text-scale-1200 text-base">Optional Fields</h3>
+                      <p className="text-scale-900 text-sm">
+                        These are columns that do not need any value
+                      </p>
+                    </div>
+                    {optionalFields.map((field: RowField) => {
+                      return (
+                        <InputField
+                          key={field.id}
+                          field={field}
+                          errors={errors}
+                          onUpdateField={onUpdateField}
+                          onEditJson={setSelectedValueForJsonEdit}
+                          onViewForeignKey={() => onViewForeignKey(field)}
+                        />
+                      )
+                    })}
+                  </div>
+                </SidePanel.Content>
+              </>
+            )}
+
+            <JsonEdit
+              visible={isEditingJson}
+              column={selectedValueForJsonEdit?.column ?? ''}
+              jsonString={selectedValueForJsonEdit?.jsonString ?? ''}
+              closePanel={() => setSelectedValueForJsonEdit(undefined)}
+              onSaveJSON={(value: string) => {
+                onUpdateField({ [selectedValueForJsonEdit?.column ?? '']: value })
+                setSelectedValueForJsonEdit(undefined)
+              }}
             />
-          )
-        })}
-      </Space>
 
-      <JsonEdit
-        visible={isEditingJson}
-        column={selectedValueForJsonEdit?.column ?? ''}
-        jsonString={selectedValueForJsonEdit?.jsonString ?? ''}
-        closePanel={() => setSelectedValueForJsonEdit(undefined)}
-        onSaveJSON={(value: string) => {
-          onUpdateField({ [selectedValueForJsonEdit?.column ?? '']: value })
-          setSelectedValueForJsonEdit(undefined)
-        }}
-      />
-
-      <ReferenceRowViewer
-        visible={isViewingReferenceRow}
-        referenceRow={referenceRow}
-        closePanel={() => {
-          setIsViewingReferenceRow(false)
-          setReferenceRow(undefined)
-        }}
-      />
+            <ReferenceRowViewer
+              visible={isViewingReferenceRow}
+              referenceRow={referenceRow}
+              closePanel={() => {
+                setIsViewingReferenceRow(false)
+                setReferenceRow(undefined)
+              }}
+            />
+          </div>
+          <div className="flex-shrink">
+            <ActionBar
+              loading={loading}
+              backButtonLabel="Cancel"
+              applyButtonLabel="Save"
+              closePanel={closePanel}
+            />
+          </div>
+        </div>
+      </form>
     </SidePanel>
   )
 }

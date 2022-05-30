@@ -15,6 +15,7 @@ import { API_URL } from 'lib/constants'
 import { get } from 'lib/common/fetch'
 import { BarChart, AreaChart } from './ChartRenderer'
 import { ChartData } from './ChartHandler.types'
+import { AreaProps } from 'recharts'
 
 interface Props {
   label: string
@@ -30,6 +31,10 @@ interface Props {
   hideChartType?: boolean
   data?: ChartData
   isLoading?: boolean
+  format?: string
+  highlightedValue?: string | number
+  onBarClick?: (v: any) => void
+  areaType?: AreaProps['type']
 }
 
 /**
@@ -55,6 +60,10 @@ const ChartHandler: FC<Props> = ({
   hideChartType = false,
   data,
   isLoading,
+  format,
+  highlightedValue,
+  onBarClick,
+  areaType,
 }) => {
   const router = useRouter()
   const { ref } = router.query
@@ -78,7 +87,7 @@ const ChartHandler: FC<Props> = ({
 
       const { error, ...res } = await get(url)
 
-      if (error && !cancel) {
+      if ((error || isUndefined(res)) && !cancel) {
         setFetching(false)
         setFetchedData(undefined)
         return console.error('Chart error:', error)
@@ -86,12 +95,14 @@ const ChartHandler: FC<Props> = ({
 
       // Convert null values to 0
       // TODO: Chart endpoint should handle this data formatting to 0 instead of client.
-      const formattedChartData = res.data.map((dataPoint: Dictionary<any>, idx: number) => {
-        return {
-          ...dataPoint,
-          [attribute]: dataPoint[attribute] ? Number(dataPoint[attribute]) : 0,
+      const formattedChartData = (res?.data ?? []).map(
+        (dataPoint: Dictionary<any>, idx: number) => {
+          return {
+            ...dataPoint,
+            [attribute]: dataPoint[attribute] ? Number(dataPoint[attribute]) : 0,
+          }
         }
-      })
+      )
 
       if (!cancel) {
         setFetchedData({ ...res, data: formattedChartData })
@@ -109,22 +120,21 @@ const ChartHandler: FC<Props> = ({
     }
   }, [startDate])
 
-  const highlightedValue =
-    provider === 'daily-stats'
-      ? chartData?.total
-      : provider === 'log-stats'
-      ? chartData?.totalGrouped?.[attribute]
-      : chartData?.totalAverage
+  highlightedValue = highlightedValue
+    ? highlightedValue
+    : provider === 'daily-stats' && !attribute.includes('ingress') && !attribute.includes('egress')
+    ? chartData?.maximum
+    : provider === 'daily-stats'
+    ? chartData?.total
+    : provider === 'log-stats'
+    ? chartData?.totalGrouped?.[attribute]
+    : chartData?.totalAverage
 
   if (loading) {
     return (
       <div className="w-full h-52 flex flex-col space-y-4 items-center justify-center">
-        <Typography.Text className="animate-spin">
-          <IconLoader />
-        </Typography.Text>
-        <Typography.Text type="secondary" small>
-          Loading data for {label}
-        </Typography.Text>
+        <IconLoader className="animate-spin text-scale-700" />
+        <p className="text-xs text-scale-900">Loading data for {label}</p>
       </div>
     )
   }
@@ -132,12 +142,8 @@ const ChartHandler: FC<Props> = ({
   if (isUndefined(chartData)) {
     return (
       <div className="w-full h-52 flex flex-col space-y-4 items-center justify-center">
-        <Typography.Text>
-          <IconAlertCircle />
-        </Typography.Text>
-        <Typography.Text type="secondary" small>
-          Unable to load data for {label}
-        </Typography.Text>
+        <IconAlertCircle className="text-scale-700" />
+        <p className="text-scale-900 text-xs">Unable to load data for {label}</p>
       </div>
     )
   }
@@ -163,15 +169,16 @@ const ChartHandler: FC<Props> = ({
           data={chartData?.data ?? []}
           attribute={attribute}
           yAxisLimit={chartData?.yAxisLimit}
-          format={chartData?.format}
+          format={format || chartData?.format}
           highlightedValue={highlightedValue}
           label={label}
           customDateFormat={customDateFormat}
+          onBarClick={onBarClick}
         />
       ) : (
         <AreaChart
           data={chartData?.data ?? []}
-          format={chartData?.format}
+          format={format || chartData?.format}
           attribute={attribute}
           yAxisLimit={chartData?.yAxisLimit}
           highlightedValue={highlightedValue}

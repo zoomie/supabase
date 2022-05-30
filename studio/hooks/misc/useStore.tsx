@@ -1,9 +1,11 @@
 import { useMonaco } from '@monaco-editor/react'
-import { getTheme } from 'components/ui/CodeEditor'
 import { autorun } from 'mobx'
-import { createContext, FC, useContext, useEffect } from 'react'
+import { createContext, FC, useContext, useEffect, useCallback } from 'react'
 import toast from 'react-hot-toast'
+
 import { IRootStore } from 'stores'
+import { getTheme } from 'components/ui/CodeEditor'
+import SparkBar from 'components/ui/SparkBar'
 
 const StoreContext = createContext<IRootStore>(undefined!)
 
@@ -31,25 +33,60 @@ export const StoreProvider: FC<StoreProvider> = ({ children, rootStore }) => {
     }
   }, [theme, monaco])
 
+  const matchMediaEvent = useCallback(() => {
+    ui.themeOption === 'system' &&
+      ui.setTheme(window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
+  }, [])
+
   useEffect(() => {
     ui.load()
 
+    if (window?.matchMedia('(prefers-color-scheme: dark)')?.addEventListener) {
+      // backwards compatibility for safari < v14
+      // limited support for addEventListener()
+      window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', matchMediaEvent)
+    }
+
     autorun(() => {
       if (ui.notification) {
-        const { id, category, message } = ui.notification
+        const { id, category, error, message, progress, duration } = ui.notification
+        const toastDuration = duration || 4000
         switch (category) {
           case 'info':
-            return toast(message, { id })
+            return toast(message, { id, duration: toastDuration })
           case 'success':
-            return toast.success(message, { id })
+            return toast.success(message, { id, duration: toastDuration })
           case 'error':
-            console.error(message)
-            return toast.error(message, { id })
+            console.error('Error:', { error, message })
+            return toast.error(message, { id, duration: toastDuration })
           case 'loading':
-            return toast.loading(message, { id })
+            if (progress) {
+              return toast.loading(
+                <div
+                  className="flex flex-col space-y-1"
+                  style={{ minWidth: '200px', maxWidth: '267px' }}
+                >
+                  <SparkBar
+                    value={progress}
+                    max={100}
+                    type="horizontal"
+                    barClass="bg-green-500"
+                    labelBottom={message}
+                    labelTop={`${progress.toFixed(2)}%`}
+                  />
+                </div>,
+                { id }
+              )
+            } else {
+              return toast.loading(message, { id })
+            }
         }
       }
     })
+    return () =>
+      window
+        .matchMedia('(prefers-color-scheme: dark)')
+        .removeEventListener('change', matchMediaEvent)
   }, [])
 
   return <StoreContext.Provider value={rootStore}>{children}</StoreContext.Provider>

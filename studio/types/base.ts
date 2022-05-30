@@ -3,9 +3,16 @@ export interface Organization {
   slug: string
   name: string
   billing_email: string
+  project_limit: number
+  members: any[]
+  projects: any[]
+  is_owner?: boolean
+  stripe_customer_id?: string
+  total_free_projects?: number
+  total_paid_projects?: number
 }
 
-export interface Project {
+export interface ProjectBase {
   id: number
   ref: string
   name: string
@@ -13,8 +20,25 @@ export interface Project {
   organization_id: number
   cloud_provider: string
   region: string
-  connectionString: string
   inserted_at: string
+  subscription_id: string
+}
+
+export interface Project extends ProjectBase {
+  // available after projects.fetchDetail
+  connectionString?: string
+  kpsVersion?: string
+  internalApiKey?: string
+  restUrl?: string
+  // store subscription tier products.metadata.supabase_prod_id
+  subscription_tier?: string
+
+  /**
+   * postgrestStatus is available on client side only.
+   * We use this status to check if a project instance is HEALTHY or not
+   * If not we will show ConnectingState and run a polling until it's back online
+   */
+  postgrestStatus?: 'ONLINE' | 'OFFLINE'  
 }
 
 export interface User {
@@ -25,6 +49,7 @@ export interface User {
   first_name: string
   last_name: string
   is_alpha_user: boolean
+  free_project_limit: number
 }
 
 export interface Member {

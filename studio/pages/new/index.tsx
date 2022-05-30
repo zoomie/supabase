@@ -1,21 +1,22 @@
 import { useState } from 'react'
 import { observer } from 'mobx-react-lite'
-import { Button, Typography } from '@supabase/ui'
-import { toast } from 'react-hot-toast'
-import Router from 'next/router'
+import { Button, Input } from '@supabase/ui'
+import { useRouter } from 'next/router'
 
 import { API_URL } from 'lib/constants'
-import { useStore, withAuth } from 'hooks'
+import { useStore } from 'hooks'
 import { post } from 'lib/common/fetch'
-import WizardLayout from 'components/layouts/WizardLayout'
-import FormField from 'components/to-be-cleaned/forms/FormField'
+import { WizardLayout } from 'components/layouts'
 import Panel from 'components/to-be-cleaned/Panel'
+import { NextPageWithLayout } from 'types'
 
 /**
  * No org selected yet, create a new one
  */
-const Wizard = () => {
-  const { app } = useStore()
+const Wizard: NextPageWithLayout = () => {
+  const { ui, app } = useStore()
+  const router = useRouter()
+
   const [orgName, setOrgName] = useState('')
   const [newOrgLoading, setNewOrgLoading] = useState(false)
 
@@ -32,77 +33,76 @@ const Wizard = () => {
     e.preventDefault()
     const isOrgNameValid = validateOrgName(orgName)
     if (!isOrgNameValid) {
-      toast.error('Organization name is empty')
+      ui.setNotification({ category: 'error', message: 'Organization name is empty' })
       return
     }
 
     setNewOrgLoading(true)
-    const response = await post(`${API_URL}/organizations/new`, {
+    const response = await post(`${API_URL}/organizations`, {
       name: orgName,
     })
 
     if (response.error) {
       setNewOrgLoading(false)
-      toast.error(response.error?.message ?? response.error)
+      ui.setNotification({
+        category: 'error',
+        message: `Failed to create organization: ${response.error?.message ?? response.error}`,
+      })
     } else {
       const org = response
       app.onOrgAdded(org)
-      Router.push('/new/[slug]', `/new/${org.slug}`)
+      router.push(`/new/${org.slug}`)
     }
   }
 
   return (
-    <WizardLayout organization={null} project={null}>
-      <Panel
-        hideHeaderStyling
-        title={[
-          <div key="panel-title">
-            <Typography.Title level={4} className="mb-0">
-              Create a new organization
-            </Typography.Title>
-          </div>,
-        ]}
-        footer={[
-          <div key="panel-footer" className="flex items-center w-full justify-between">
-            <Button type="default" onClick={() => Router.push('/')}>
-              Cancel
+    <Panel
+      hideHeaderStyling
+      title={[
+        <div key="panel-title">
+          <h4>Create a new organization</h4>
+        </div>,
+      ]}
+      footer={[
+        <div key="panel-footer" className="flex w-full items-center justify-between">
+          <Button type="default" onClick={() => router.push('/')}>
+            Cancel
+          </Button>
+          <div className="flex items-center space-x-3">
+            <p className="text-scale-900 text-xs">You can rename your organization later</p>
+            <Button onClick={onClickSubmit} loading={newOrgLoading} disabled={newOrgLoading}>
+              Create organization
             </Button>
-            <div className="space-x-3">
-              <Typography.Text type="secondary" small>
-                You can rename your organization later
-              </Typography.Text>
-              <Button onClick={onClickSubmit} loading={newOrgLoading} disabled={newOrgLoading}>
-                Create organization
-              </Button>
-            </div>
-          </div>,
-        ]}
-      >
-        <Panel.Content className="pt-0">
-          <Typography.Text>
-            This is your organization's name within Supabase.
-            <br />
-          </Typography.Text>
-          <Typography.Text type="secondary">
-            For example, you can use the name of your company or department
-          </Typography.Text>
-        </Panel.Content>
-        <Panel.Content className="Form section-block--body has-inputs-centered">
-          <FormField
-            // @ts-ignore
-            label="Name"
-            type="text"
-            placeholder="Organization name"
-            value={orgName}
-            onChange={onOrgNameChange}
-            description="What's the name of your company or team?"
-            wrapperClasses="pb-2"
-            autoFocus
-          />
-        </Panel.Content>
-      </Panel>
-    </WizardLayout>
+          </div>
+        </div>,
+      ]}
+    >
+      <Panel.Content className="pt-0">
+        <p className="text-sm">This is your organization's name within Supabase.</p>
+        <p className="text-scale-1100 text-sm">
+          For example, you can use the name of your company or department
+        </p>
+      </Panel.Content>
+      <Panel.Content className="Form section-block--body has-inputs-centered">
+        <Input
+          autoFocus
+          label="Name"
+          type="text"
+          layout="horizontal"
+          placeholder="Organization name"
+          descriptionText="What's the name of your company or team?"
+          value={orgName}
+          onChange={onOrgNameChange}
+        />
+      </Panel.Content>
+    </Panel>
   )
 }
 
-export default withAuth(observer(Wizard))
+Wizard.getLayout = (page) => (
+  <WizardLayout organization={null} project={null}>
+    {page}
+  </WizardLayout>
+)
+
+export default observer(Wizard)

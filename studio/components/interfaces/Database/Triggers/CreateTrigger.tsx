@@ -1,28 +1,26 @@
-import * as React from 'react'
+import { FC, useEffect, createContext, useContext } from 'react'
 import { makeAutoObservable } from 'mobx'
 import { observer, useLocalObservable } from 'mobx-react-lite'
 import { isEmpty, mapValues, has, without, union } from 'lodash'
 import {
   Input,
   SidePanel,
-  Divider,
   Checkbox,
   Listbox,
   Typography,
   IconPlayCircle,
   IconPauseCircle,
   IconTerminal,
-  IconTool,
   Badge,
+  Button,
 } from '@supabase/ui'
-import toast from 'react-hot-toast'
 import { Dictionary } from '@supabase/grid'
 import { useRouter } from 'next/router'
 import SVG from 'react-inlinesvg'
 
 import ChooseFunctionForm from './ChooseFunctionForm'
 import FormEmptyBox from 'components/to-be-cleaned/FormBoxEmpty'
-import ProductEmptyState from 'components/to-be-cleaned/ProductEmptyState'
+import NoTableState from 'components/ui/States/NoTableState'
 import { useStore } from 'hooks'
 
 class CreateTriggerFormState {
@@ -241,7 +239,7 @@ function hasWhitespace(value: string) {
   return /\s/.test(value)
 }
 
-const CreateTriggerContext = React.createContext<ICreateTriggerStore | null>(null)
+const CreateTriggerContext = createContext<ICreateTriggerStore | null>(null)
 
 type CreateTriggerProps = {
   trigger?: any
@@ -249,8 +247,8 @@ type CreateTriggerProps = {
   setVisible: (value: boolean) => void
 } & any
 
-const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisible }) => {
-  const { meta } = useStore()
+const CreateTrigger: FC<CreateTriggerProps> = ({ trigger, visible, setVisible }) => {
+  const { ui, meta } = useStore()
   const _localState = useLocalObservable(() => new CreateTriggerStore())
   _localState.meta = meta as any
 
@@ -258,7 +256,7 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
   const router = useRouter()
   const { ref } = router.query
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchTables = async () => {
       await (_localState!.meta as any)!.tables!.load()
       const tables = (_localState!.meta as any)!.tables.list()
@@ -274,7 +272,7 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
     fetchFunctions()
   }, [])
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (trigger) {
       _localState.formState.reset(trigger)
     } else {
@@ -294,19 +292,29 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
           : await (_localState.meta as any).triggers.create(body)
 
         if (response.error) {
-          toast.error(`Error: ${response.error.message ?? 'submit request failed'}`)
+          ui.setNotification({
+            category: 'error',
+            message: `Failed to create trigger: ${
+              response.error?.message ?? 'submit request failed'
+            }`,
+          })
           _localState.setLoading(false)
         } else {
-          toast.success(
-            `${_localState.isEditing ? 'Updated' : 'Created new'} trigger called ${response.name}`
-          )
+          ui.setNotification({
+            category: 'success',
+            message: `${_localState.isEditing ? 'Updated' : 'Created new'} trigger called ${
+              response.name
+            }`,
+          })
           _localState.setLoading(false)
           setVisible(!visible)
         }
       }
     } catch (error: any) {
-      console.error('Handle submit error:', error)
-      toast.error(error.message)
+      ui.setNotification({
+        category: 'error',
+        message: `Filed to create trigger: ${error.message}`,
+      })
       _localState.setLoading(false)
     }
   }
@@ -316,13 +324,10 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
   return (
     <>
       <SidePanel
-        wide
+        size="large"
         visible={visible}
         onCancel={() => setVisible(!visible)}
-        // @ts-ignore
-        contentStyle={{ padding: 0 }}
-        footerBackground={true}
-        title={_localState.title}
+        header={_localState.title}
         hideFooter={!hasPublicTables}
         className={
           _localState.chooseFunctionFormVisible
@@ -333,9 +338,9 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
         onConfirm={handleSubmit}
       >
         {hasPublicTables ? (
-          <div className="pb-8">
+          <div className="">
             <CreateTriggerContext.Provider value={_localState}>
-              <div className="space-y-10 mt-4">
+              <div className="space-y-10 my-6">
                 {_localState.isEditing ? (
                   <div className="px-6 space-y-6">
                     <InputName />
@@ -346,7 +351,7 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
                     <div className="px-6">
                       <InputName />
                     </div>
-                    <Divider light />
+                    <SidePanel.Seperator />
                     <div className="px-6 space-y-12">
                       <Typography.Title level={5}>Conditions to fire trigger</Typography.Title>
                       <ListboxTable />
@@ -354,7 +359,7 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
                       <ListboxActivation />
                       <SelectOrientation />
                     </div>
-                    <Divider light />
+                    <SidePanel.Seperator />
                     <FunctionForm />
                   </>
                 )}
@@ -368,37 +373,17 @@ const CreateTrigger: React.FC<CreateTriggerProps> = ({ trigger, visible, setVisi
             </CreateTriggerContext.Provider>
           </div>
         ) : (
-          <NoTableState />
+          <NoTableState message="You will need to create a table first before you can make a trigger" />
         )}
       </SidePanel>
     </>
   )
 }
 
-const NoTableState: React.FC = ({}) => {
-  // for the empty 'no tables' state link
-  const router = useRouter()
-  const { ref } = router.query
-
-  return (
-    <ProductEmptyState
-      title="No public tables found"
-      ctaButtonLabel="Create a new table"
-      onClickCta={() => {
-        router.push(`/project/${ref}/database/tables`)
-      }}
-    >
-      <Typography.Text type="secondary">
-        You will need to create a table first before you can make a trigger
-      </Typography.Text>
-    </ProductEmptyState>
-  )
-}
-
 export default observer(CreateTrigger)
 
-const InputName: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const InputName: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     <Input
       id="name"
@@ -419,8 +404,8 @@ const InputName: React.FC = observer(({}) => {
   )
 })
 
-const SelectEnabledMode: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const SelectEnabledMode: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     <Listbox
       id="enabled-mode"
@@ -439,59 +424,61 @@ const SelectEnabledMode: React.FC = observer(({}) => {
       <Listbox.Option
         addOnBefore={({ active, selected }: any) => {
           return (
-            <div className="bg-green-500 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
+            <div className="bg-green-900 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
           )
         }}
         value="ORIGIN"
         label="Origin"
       >
         Origin
-        <span className="opacity-50 block">This is a default behaviour</span>
+        <span className="text-scale-900 block">This is a default behaviour</span>
       </Listbox.Option>
       <Listbox.Option
         addOnBefore={({ active, selected }: any) => {
           return (
-            <div className="bg-green-500 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
+            <div className="bg-green-900 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
           )
         }}
         value="REPLICA"
         label="Replica"
       >
         Replica
-        <span className="opacity-50 block">Will only fire if the session is in “replica” mode</span>
+        <span className="text-scale-900 block">
+          Will only fire if the session is in “replica” mode
+        </span>
       </Listbox.Option>
       <Listbox.Option
         addOnBefore={({ active, selected }: any) => {
           return (
-            <div className="bg-green-500 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
+            <div className="bg-green-900 border border-green-700 shadow-sm w-3 h-3 rounded-full"></div>
           )
         }}
         value="ALWAYS"
         label="Always"
       >
         Always
-        <span className="opacity-50 block">
+        <span className="text-scale-900 block">
           Will fire regardless of the current replication role
         </span>
       </Listbox.Option>
       <Listbox.Option
         addOnBefore={({ active, selected }: any) => {
           return (
-            <div className="bg-red-500 border border-red-700 shadow-sm w-3 h-3 rounded-full"></div>
+            <div className="bg-red-900 border border-red-700 shadow-sm w-3 h-3 rounded-full"></div>
           )
         }}
         value="DISABLED"
         label="Disabled"
       >
         Disabled
-        <span className="opacity-50 block">Will not fire</span>
+        <span className="text-scale-900 block">Will not fire</span>
       </Listbox.Option>
     </Listbox>
   )
 })
 
-const SelectOrientation: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const SelectOrientation: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     <Listbox
       id="orientation"
@@ -509,18 +496,18 @@ const SelectOrientation: React.FC = observer(({}) => {
     >
       <Listbox.Option value="ROW" label="Row">
         Row
-        <span className="opacity-50 block">fires once for each processed row</span>
+        <span className="text-scale-900 block">fires once for each processed row</span>
       </Listbox.Option>
       <Listbox.Option value="STATEMENT" label="Statement">
         Statement
-        <span className="opacity-50 block">fires once for each statement</span>
+        <span className="text-scale-900 block">fires once for each statement</span>
       </Listbox.Option>
     </Listbox>
   )
 })
 
-const ListboxTable: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const ListboxTable: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
 
   return (
     <Listbox
@@ -557,7 +544,7 @@ const ListboxTable: React.FC = observer(({}) => {
             value={x.id}
             label={x.name}
             addOnBefore={() => (
-              <div className="bg-green-600 p-1 flex items-center justify-center rounded text-typography-body-dark ">
+              <div className="bg-scale-1200 p-1 flex items-center justify-center rounded text-scale-100 ">
                 <SVG
                   src={'/img/table-editor.svg'}
                   style={{ width: `16px`, height: `16px`, strokeWidth: '1px' }}
@@ -570,8 +557,7 @@ const ListboxTable: React.FC = observer(({}) => {
           >
             <div className="flex flex-row items-center space-x-1">
               <Typography.Text>{x.name}</Typography.Text>
-              <Divider light type="vertical" />
-              <Typography.Text type="secondary" className="opacity-50" small>
+              <Typography.Text type="secondary" className="text-scale-900" small>
                 {x.schema}
               </Typography.Text>
             </div>
@@ -582,8 +568,8 @@ const ListboxTable: React.FC = observer(({}) => {
   )
 })
 
-const CheckboxEvents: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const CheckboxEvents: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     // @ts-ignore
     <Checkbox.Group
@@ -608,19 +594,19 @@ const CheckboxEvents: React.FC = observer(({}) => {
     >
       <Checkbox
         value="INSERT"
-        label="INSERT"
+        label="Insert"
         description={'Any insert operation on the table'}
         checked={_localState!.formState.events.value.includes('INSERT')}
       />
       <Checkbox
         value="UPDATE"
-        label="UPDATE"
+        label="Update"
         description="Any update operation, of any column in the table"
         checked={_localState!.formState.events.value.includes('UPDATE')}
       />
       <Checkbox
         value="DELETE"
-        label="DELETE"
+        label="Delete"
         description="Any deletion of a record"
         checked={_localState!.formState.events.value.includes('DELETE')}
       />
@@ -628,13 +614,13 @@ const CheckboxEvents: React.FC = observer(({}) => {
   )
 })
 
-const ListboxActivation: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const ListboxActivation: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     <Listbox
       id="activation"
       label="Trigger type"
-      descriptionText="This dertermines when your Hook fires"
+      descriptionText="This determines when your Hook fires"
       onChange={(_value) => {
         _localState!.onFormChange({
           key: 'activation',
@@ -651,14 +637,16 @@ const ListboxActivation: React.FC = observer(({}) => {
         value={'BEFORE'}
         label={'Before the event'}
         addOnBefore={() => (
-          <div className="bg-green-600  p-1 flex items-center justify-center rounded text-typography-body-dark ">
+          <div className="bg-scale-1200  p-1 flex items-center justify-center rounded text-scale-100 ">
             <IconPauseCircle strokeWidth={2} size="small" />
           </div>
         )}
       >
         <div className="flex flex-col">
           <span>{'before'}</span>
-          <span className="opacity-50 block">Trigger fires before the operation is attempted</span>
+          <span className="text-scale-900 block">
+            Trigger fires before the operation is attempted
+          </span>
         </div>
       </Listbox.Option>
       <Listbox.Option
@@ -666,22 +654,24 @@ const ListboxActivation: React.FC = observer(({}) => {
         value={'AFTER'}
         label={'After the event'}
         addOnBefore={() => (
-          <div className="bg-green-600  p-1 flex items-center justify-center rounded text-typography-body-dark ">
+          <div className="bg-green-1200  p-1 flex items-center justify-center rounded text-scale-100 ">
             <IconPlayCircle strokeWidth={2} size="small" />
           </div>
         )}
       >
         <div className="flex flex-col">
           <span>{'after'}</span>
-          <span className="opacity-50 block">Trigger fires after the operation has completed</span>
+          <span className="text-scale-900 block">
+            Trigger fires after the operation has completed
+          </span>
         </div>
       </Listbox.Option>
     </Listbox>
   )
 })
 
-const FunctionForm: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const FunctionForm: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
 
   return (
     <div className="space-y-4">
@@ -699,62 +689,70 @@ const FunctionForm: React.FC = observer(({}) => {
   )
 })
 
-const FunctionEmpty: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const FunctionEmpty: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
   return (
     <button
       type="button"
       onClick={() => _localState!.setChooseFunctionFormVisible(true)}
-      className="w-full relative transition-shadow shadow-sm 
-                  border-2 border-dashed dark:border-dark rounded hover:border-gray-300
-                  px-6 py-4 
-                  hover:bg-bg-alt-light dark:hover:bg-bg-alt-dark hover:bg-opacity-25 hover:shadow-md cursor-pointer 
-                  flex space-x-3 items-center"
+      className="w-full relative 
+        transition-all
+        
+        shadow-sm 
+                  border bg-scale-200 dark:bg-scale-400
+                  border-scale-600
+                  rounded
+                  hover:border-scale-700
+                  hover:bg-scale-300 dark:hover:bg-scale-500
+                  px-5 py-1 
+                  
+                  "
     >
       <FormEmptyBox
-        icon={<IconTerminal size={21} strokeWidth={2} />}
+        icon={<IconTerminal size={14} strokeWidth={2} />}
         text="Choose a function to trigger"
       />
-      <div className="form-info-panel__edit-icon transition-all opacity-0 absolute right-3 top-3 mt-0 bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center text-white">
-        <IconTool size="small" />
-      </div>
     </button>
   )
 })
 
-const FunctionWithArguments: React.FC = observer(({}) => {
-  const _localState = React.useContext(CreateTriggerContext)
+const FunctionWithArguments: FC = observer(({}) => {
+  const _localState = useContext(CreateTriggerContext)
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => _localState!.setChooseFunctionFormVisible(true)}
-        className="bg-bg-alt-light dark:bg-bg-alt-dark
+      <div
+        className="
+        
+        
               w-full
-              form-info-panel 
+
               relative 
               transition-shadow shadow-sm 
-              border dark:border-dark rounded hover:border-gray-300
-              px-6 py-4 
-              hover:bg-gray-100 hover:bg-opacity-25 hover:shadow-md cursor-pointer 
-              flex space-x-3 items-center"
+              border border-scale-200 dark:border-scale-500
+              rounded
+
+
+              px-5 py-4 
+              flex space-x-3 items-center justify-between"
       >
-        <div className="flex rounded-full w-8 h-8 bg-green-700 bg-opacity-10 items-center justify-center">
-          <IconTerminal size="small" strokeWidth={2} />
-        </div>
-        <div className="flex items-center justify-center space-x-4">
-          <Typography.Text type="secondary">
-            {_localState!.formState.functionName.value}
-          </Typography.Text>
-          <div>
-            <Badge>{_localState!.formState.functionSchema.value}</Badge>
+        <div className="flex items-center gap-2">
+          <div className="flex rounded w-6 h-6 bg-scale-1200 text-scale-100 focus-within:bg-opacity-10 items-center justify-center">
+            <IconTerminal size="small" strokeWidth={2} width={14} />
+          </div>
+          <div className="flex items-center gap-2">
+            <Typography.Text type="secondary">
+              {_localState!.formState.functionName.value}
+            </Typography.Text>
+            <div>
+              <Badge>{_localState!.formState.functionSchema.value}</Badge>
+            </div>
           </div>
         </div>
-        <div className="form-info-panel__edit-icon transition-all opacity-0 absolute right-3 top-3 mt-0 bg-gray-600 w-8 h-8 rounded-full flex items-center justify-center text-white">
-          <IconTool size="small" />
-        </div>
-      </button>
+        <Button type="default" onClick={() => _localState!.setChooseFunctionFormVisible(true)}>
+          Change function
+        </Button>
+      </div>
     </>
   )
 })

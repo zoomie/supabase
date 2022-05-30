@@ -2,7 +2,7 @@ import { FC, ReactNode, useState, useEffect } from 'react'
 import { observer } from 'mobx-react-lite'
 import { useRouter } from 'next/router'
 
-import { useStore } from 'hooks'
+import { useStore, withAuth } from 'hooks'
 import BaseLayout from '../'
 import Error from 'components/ui/Error'
 import ProductMenu from 'components/ui/ProductMenu'
@@ -15,18 +15,21 @@ interface Props {
 
 const AuthLayout: FC<Props> = ({ title, children }) => {
   const { ui, meta } = useStore()
-  const { isLoading, error } = meta.tables
+  const { isInitialized, isLoading, error } = meta.tables
   const projectRef = ui.selectedProject?.ref ?? 'default'
 
   const router = useRouter()
   const page = router.pathname.split('/')[4]
 
-  const [loaded, setLoaded] = useState<boolean>(false)
+  const [loaded, setLoaded] = useState<boolean>(isInitialized)
 
   useEffect(() => {
-    // I think we should just shift the loading of things into the page level
-    meta.tables.load()
-  }, [])
+    if (ui.selectedProject) {
+      meta.policies.load()
+      meta.tables.load()
+      meta.roles.load()
+    }
+  }, [ui.selectedProject])
 
   useEffect(() => {
     if (!isLoading && !loaded) {
@@ -56,4 +59,4 @@ const AuthLayout: FC<Props> = ({ title, children }) => {
   )
 }
 
-export default observer(AuthLayout)
+export default withAuth(observer(AuthLayout))

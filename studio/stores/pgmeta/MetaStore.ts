@@ -1,8 +1,13 @@
 import Papa from 'papaparse'
 import { makeObservable, observable } from 'mobx'
-import { find, isUndefined, isEqual, isEmpty, chunk, maxBy } from 'lodash'
+import { find, isUndefined, isEqual, isEmpty, chunk } from 'lodash'
 import { Query } from '@supabase/grid'
-import { PostgresColumn, PostgresTable, PostgresRelationship } from '@supabase/postgres-meta'
+import {
+  PostgresColumn,
+  PostgresTable,
+  PostgresRelationship,
+  PostgresPrimaryKey,
+} from '@supabase/postgres-meta'
 
 import { IS_PLATFORM, API_URL } from 'lib/constants'
 import { post } from 'lib/common/fetch'
@@ -26,13 +31,14 @@ import {
   generateUpdateColumnPayload,
 } from 'components/interfaces/TableGridEditor/SidePanelEditor/ColumnEditor/ColumnEditor.utils'
 import { ImportContent } from 'components/interfaces/TableGridEditor/SidePanelEditor/TableEditor/TableEditor.types'
-import RolesStore from './RolesStore'
+import RolesStore, { IRolesStore } from './RolesStore'
 import PoliciesStore from './PoliciesStore'
 import TriggersStore from './TriggersStore'
 import PublicationStore, { IPublicationStore } from './PublicationStore'
 import FunctionsStore from './FunctionsStore'
 import HooksStore from './HooksStore'
 import ExtensionsStore from './ExtensionsStore'
+import TypesStore from './TypesStore'
 
 const BATCH_SIZE = 1000
 const CHUNK_SIZE = 1024 * 1024 * 0.25 // 0.25MB
@@ -46,12 +52,13 @@ export interface IMetaStore {
   schemas: ISchemaStore
 
   hooks: IPostgresMetaInterface<any>
-  roles: IPostgresMetaInterface<any>
+  roles: IRolesStore
   policies: IPostgresMetaInterface<any>
   triggers: IPostgresMetaInterface<any>
   functions: IPostgresMetaInterface<any>
   extensions: IPostgresMetaInterface<any>
   publications: IPublicationStore
+  types: IPostgresMetaInterface<any>
 
   query: (value: string) => Promise<any | { error: ResponseError }>
   validateQuery: (value: string) => Promise<any | { error: ResponseError }>
@@ -108,6 +115,7 @@ export default class MetaStore implements IMetaStore {
   functions: FunctionsStore
   extensions: ExtensionsStore
   publications: PublicationStore
+  types: TypesStore
 
   connectionString?: string
   baseUrl: string
@@ -118,14 +126,16 @@ export default class MetaStore implements IMetaStore {
     'net',
     'pg_catalog',
     'pgbouncer',
+    'realtime',
     'storage',
     'supabase_functions',
+    'graphql',
   ]
 
   constructor(rootStore: IRootStore, options: { projectRef: string; connectionString: string }) {
     const { projectRef, connectionString } = options
     this.rootStore = rootStore
-    this.baseUrl = `/api/pg-meta/${projectRef}`
+    this.baseUrl = `${API_URL}/pg-meta/${projectRef}`
 
     const headers: any = {}
     if (IS_PLATFORM && connectionString) {
@@ -147,6 +157,7 @@ export default class MetaStore implements IMetaStore {
       identifier: 'name',
     })
     this.publications = new PublicationStore(rootStore, `${this.baseUrl}/publications`, headers)
+    this.types = new TypesStore(rootStore, `${this.baseUrl}/types`, headers)
 
     makeObservable(this, {
       excludedSchemas: observable,
@@ -296,6 +307,8 @@ export default class MetaStore implements IMetaStore {
     // Duplicate foreign key constraints over
     const relationships = metadata.duplicateTable.relationships
     if (relationships.length > 0) {
+      // @ts-ignore, but might need to investigate, sounds bad:
+      // Type instantiation is excessively deep and possibly infinite
       relationships.map(async (relationship: PostgresRelationship) => {
         const relation = await this.rootStore.meta.addForeignKey({
           ...relationship,
@@ -348,119 +361,142 @@ export default class MetaStore implements IMetaStore {
     const table: any = await this.tables.create(payload)
     if (table.error) throw table.error
 
-    // Toggle RLS if configured to be
-    if (isRLSEnabled) {
-      const updatedTable: any = await this.tables.update(table.id, {
-        rls_enabled: isRLSEnabled,
-      })
-      if (updatedTable.error) throw updatedTable.error
-    }
-
-    // Then insert the columns - we don't do Promise.all as we want to keep the integrity
-    // of the column order during creation. Note that we add primary key constraints separately
-    // via the query endpoint to support composite primary keys as pg-meta does not support that OOB
-    this.rootStore.ui.setNotification({
-      id: toastId,
-      category: 'loading',
-      message: `Adding ${columns.length} columns to ${table.name}...`,
-    })
-    for (const column of columns) {
-      // We create all columns without primary keys first
-      const columnPayload = generateCreateColumnPayload(table.id, {
-        ...column,
-        isPrimaryKey: false,
-      })
-      const newColumn: any = await this.columns.create(columnPayload)
-      if (newColumn.error) throw newColumn.error
-    }
-
-    // Then add the primary key constraints here to support composite keys
-    const primaryKeyColumns = columns
-      .filter((column: ColumnField) => column.isPrimaryKey)
-      .map((column: ColumnField) => `"${column.name}"`)
-    if (primaryKeyColumns.length > 0) {
-      const primaryKeys = await this.addPrimaryKey(table.schema, table.name, primaryKeyColumns)
-      if (primaryKeys.error) throw primaryKeys.error
-    }
-
-    // Then add the foreign key constraints here
-    for (const column of columns) {
-      if (!isUndefined(column.foreignKey)) {
-        const relationship = await this.addForeignKey(column.foreignKey)
-        if (relationship.error) throw relationship.error
+    // If we face any errors during this process after the actual table creation
+    // We'll delete the table as a way to clean up and not leave behind bits that
+    // got through successfully. This is so that the user can continue editing in
+    // the table side panel editor conveniently
+    try {
+      // Toggle RLS if configured to be
+      if (isRLSEnabled) {
+        const updatedTable: any = await this.tables.update(table.id, {
+          rls_enabled: isRLSEnabled,
+        })
+        if (updatedTable.error) throw updatedTable.error
       }
-    }
 
-    // If the user is importing data via a spreadsheet
-    if (!isUndefined(importContent)) {
-      if (importContent.file) {
-        // Via a CSV file
-        const { error }: any = await this.insertRowsViaSpreadsheet(
-          importContent.file,
-          table,
-          (progress: any) => {
+      // Then insert the columns - we don't do Promise.all as we want to keep the integrity
+      // of the column order during creation. Note that we add primary key constraints separately
+      // via the query endpoint to support composite primary keys as pg-meta does not support that OOB
+      this.rootStore.ui.setNotification({
+        id: toastId,
+        category: 'loading',
+        message: `Adding ${columns.length} columns to ${table.name}...`,
+      })
+
+      for (const column of columns) {
+        // We create all columns without primary keys first
+        const columnPayload = generateCreateColumnPayload(table.id, {
+          ...column,
+          isPrimaryKey: false,
+        })
+        const newColumn: any = await this.columns.create(columnPayload)
+        if (newColumn.error) throw newColumn.error
+      }
+
+      // Then add the primary key constraints here to support composite keys
+      const primaryKeyColumns = columns
+        .filter((column: ColumnField) => column.isPrimaryKey)
+        .map((column: ColumnField) => `"${column.name}"`)
+      if (primaryKeyColumns.length > 0) {
+        const primaryKeys = await this.addPrimaryKey(table.schema, table.name, primaryKeyColumns)
+        if (primaryKeys.error) throw primaryKeys.error
+      }
+
+      // Then add the foreign key constraints here
+      for (const column of columns) {
+        if (!isUndefined(column.foreignKey)) {
+          const relationship = await this.addForeignKey(column.foreignKey)
+          if (relationship.error) throw relationship.error
+        }
+      }
+
+      // If the user is importing data via a spreadsheet
+      if (!isUndefined(importContent)) {
+        if (importContent.file && importContent.rowCount > 0) {
+          // Via a CSV file
+          const { error }: any = await this.insertRowsViaSpreadsheet(
+            importContent.file,
+            table,
+            (progress: number) => {
+              this.rootStore.ui.setNotification({
+                id: toastId,
+                progress,
+                category: 'loading',
+                message: `Adding ${importContent.rowCount.toLocaleString()} rows to ${table.name}`,
+              })
+            }
+          )
+
+          // For identity columns, manually raise the sequences
+          const identityColumns = columns.filter((column) => column.isIdentity)
+          for (const column of identityColumns) {
+            const identity = await this.rootStore.meta.query(
+              `SELECT setval('${table.name}_${column.name}_seq', (SELECT MAX("${column.name}") FROM "${table.name}"));`
+            )
+            if (identity.error) throw identity.error
+          }
+
+          if (!isUndefined(error)) {
             this.rootStore.ui.setNotification({
-              id: toastId,
-              category: 'loading',
-              message: `Adding ${importContent.rowCount.toLocaleString()} rows to ${
-                table.name
-              }... (${progress}%)`,
+              category: 'error',
+              message: 'Do check your spreadsheet if there are any discrepancies.',
+            })
+            this.rootStore.ui.setNotification({
+              category: 'error',
+              message: `Table ${table.name} has been created but we ran into an error while inserting rows:
+            ${error.message}`,
+              error,
             })
           }
-        )
-
-        // For identity columns, manually raise the sequences
-        const identityColumns = columns.filter((column) => column.isIdentity)
-        for (const column of identityColumns) {
-          const identity = await this.rootStore.meta.query(
-            `SELECT setval('${table.name}_${column.name}_seq', (SELECT MAX("${column.name}") FROM "${table.name}"));`
-          )
-          if (identity.error) throw identity.error
-        }
-
-        if (!isUndefined(error)) {
-          this.rootStore.ui.setNotification({
-            id: toastId,
-            category: 'error',
-            message: `Table ${table.name} has been created but we ran into an error while inserting rows:
-            ${error.message} - ${error.details}`,
+        } else {
+          // Via text copy and paste
+          await this.insertTableRows(table, importContent.rows, (progress: number) => {
+            this.rootStore.ui.setNotification({
+              id: toastId,
+              progress,
+              category: 'loading',
+              message: `Adding ${importContent.rows.length.toLocaleString()} rows to ${table.name}`,
+            })
           })
-          this.rootStore.ui.setNotification({
-            category: 'error',
-            message: 'Do check your spreadsheet if there are any discrepancies.',
-          })
-        }
-      } else {
-        // Via text copy and paste
-        await this.insertTableRows(table, importContent.rows, (progress: any) => {
-          this.rootStore.ui.setNotification({
-            id: toastId,
-            category: 'loading',
-            message: `Adding ${importContent.rows.length.toLocaleString()} rows to ${
-              table.name
-            }... (${progress}%)`,
-          })
-        })
 
-        // For identity columns, manually raise the sequences
-        const identityColumns = columns.filter((column) => column.isIdentity)
-        for (const column of identityColumns) {
-          const identity = await this.rootStore.meta.query(
-            `SELECT setval('${table.name}_${column.name}_seq', (SELECT MAX("${column.name}") FROM "${table.name}"));`
-          )
-          if (identity.error) throw identity.error
+          // For identity columns, manually raise the sequences
+          const identityColumns = columns.filter((column) => column.isIdentity)
+          for (const column of identityColumns) {
+            const identity = await this.rootStore.meta.query(
+              `SELECT setval('${table.name}_${column.name}_seq', (SELECT MAX("${column.name}") FROM "${table.name}"));`
+            )
+            if (identity.error) throw identity.error
+          }
         }
       }
-    }
 
-    return await this.tables.loadById(table.id)
+      // Finally, return the created table
+      return await this.tables.loadById(table.id)
+    } catch (error: any) {
+      this.tables.del(table.id)
+      throw error
+    }
   }
 
   async updateTable(toastId: string, table: PostgresTable, payload: any, columns: ColumnField[]) {
-    // Remove any primary key constraints first (we'll add it back later)
-    if (table.primary_keys.length > 0) {
-      const removePK = await this.removePrimaryKey(table.schema, table.name)
-      if (removePK.error) throw removePK.error
+    // Prepare a check to see if primary keys to the tables were updated or not
+    const primaryKeyColumns = columns
+      .filter((column) => column.isPrimaryKey)
+      .map((column) => `"${column.name}"`)
+    const existingPrimaryKeyColumns = table.primary_keys.map(
+      (pk: PostgresPrimaryKey) => `"${pk.name}"`
+    )
+    const isPrimaryKeyUpdated = !isEqual(primaryKeyColumns, existingPrimaryKeyColumns)
+
+    if (isPrimaryKeyUpdated) {
+      // Remove any primary key constraints first (we'll add it back later)
+      // If we do it later, and if the user deleted a PK column, we'd need to do
+      // an additional check when removing PK if the column in the PK was removed
+      // So doing this one step earlier, lets us skip that additional check.
+      if (table.primary_keys.length > 0) {
+        const removePK = await this.removePrimaryKey(table.schema, table.name)
+        if (removePK.error) throw removePK.error
+      }
     }
 
     // Update the table
@@ -483,6 +519,7 @@ export default class MetaStore implements IMetaStore {
     }
 
     // Add any new columns / Update any existing columns
+    let hasError = false
     for (const column of columns) {
       if (!column.id.includes(table.id.toString())) {
         this.rootStore.ui.setNotification({
@@ -490,7 +527,12 @@ export default class MetaStore implements IMetaStore {
           category: 'loading',
           message: `Adding column ${column.name} to ${updatedTable.name}`,
         })
-        const columnPayload = generateCreateColumnPayload(updatedTable.id, column)
+        // Ensure that columns do not created as primary key first, cause the primary key will
+        // be added later on further down in the code
+        const columnPayload = generateCreateColumnPayload(updatedTable.id, {
+          ...column,
+          isPrimaryKey: false,
+        })
         await this.createColumn(columnPayload, column.foreignKey)
       } else {
         const originalColumn = find(originalColumns, { id: column.id })
@@ -508,17 +550,26 @@ export default class MetaStore implements IMetaStore {
               category: 'loading',
               message: `Updating column ${column.name} from ${updatedTable.name}`,
             })
-            await this.updateColumn(column.id, columnPayload, updatedTable, column.foreignKey)
+            const res: any = await this.updateColumn(
+              column.id,
+              columnPayload,
+              updatedTable,
+              column.foreignKey
+            )
+            if (res?.error) {
+              hasError = true
+              this.rootStore.ui.setNotification({
+                category: 'error',
+                message: `Failed to update column "${column.name}": ${res.error.message}`,
+              })
+            }
           }
         }
       }
     }
 
-    // Add back the primary keys here
-    const primaryKeyColumns = columns
-      .filter((column) => column.isPrimaryKey)
-      .map((column) => `"${column.name}"`)
-    if (primaryKeyColumns.length > 0) {
+    // Then add back the primary keys again
+    if (isPrimaryKeyUpdated && primaryKeyColumns.length > 0) {
       const primaryKeys = await this.addPrimaryKey(
         updatedTable.schema,
         updatedTable.name,
@@ -527,13 +578,13 @@ export default class MetaStore implements IMetaStore {
       if (primaryKeys.error) throw primaryKeys.error
     }
 
-    return await this.tables.loadById(table.id)
+    return { table: await this.tables.loadById(table.id), hasError }
   }
 
   async insertRowsViaSpreadsheet(
     file: any,
     table: PostgresTable,
-    onProgressUpdate: (progress: any) => void
+    onProgressUpdate: (progress: number) => void
   ) {
     let chunkNumber = 0
     let insertError: any = undefined
@@ -561,7 +612,7 @@ export default class MetaStore implements IMetaStore {
           } else {
             chunkNumber += 1
             const progress = (chunkNumber * CHUNK_SIZE) / file.size
-            const progressPercentage = progress > 1 ? 100 : Number((progress * 100).toFixed(2))
+            const progressPercentage = progress > 1 ? 100 : progress * 100
             onProgressUpdate(progressPercentage)
             parser.resume()
           }
@@ -578,7 +629,7 @@ export default class MetaStore implements IMetaStore {
   async insertTableRows(
     table: PostgresTable,
     rows: any,
-    onProgressUpdate: (progress: any) => void
+    onProgressUpdate: (progress: number) => void
   ) {
     let insertError = undefined
     let insertProgress = 0
@@ -609,7 +660,7 @@ export default class MetaStore implements IMetaStore {
       if (hasFailedBatch) {
         break
       }
-      onProgressUpdate((insertProgress * 100).toFixed(2))
+      onProgressUpdate(insertProgress * 100)
     }
   }
 }

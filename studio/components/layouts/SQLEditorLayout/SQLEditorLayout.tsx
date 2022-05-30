@@ -1,11 +1,10 @@
-import { FC, ReactNode, useEffect, useState } from 'react'
+import { FC, ReactNode, useEffect } from 'react'
 import { observer } from 'mobx-react-lite'
 
 import { useStore } from 'hooks'
 import Error from 'components/ui/Error'
 import ProjectLayout from '../ProjectLayout/ProjectLayout'
-// import SQLEditorMenu from './SQLEditorMenu'
-import SQLEditorMenuOld from './SQLEditorMenuOld'
+import SQLEditorMenu from './SQLEditorMenu'
 
 interface Props {
   title: string
@@ -14,34 +13,21 @@ interface Props {
 
 const SQLEditorLayout: FC<Props> = ({ title, children }) => {
   const { content } = useStore()
-  const { isLoading, error } = content
-
-  const [loaded, setLoaded] = useState(false)
 
   useEffect(() => {
     content.load()
   }, [])
 
-  useEffect(() => {
-    if (!isLoading && !loaded) {
-      setLoaded(true)
-    }
-  }, [isLoading])
-
-  if (error) {
-    return (
-      <ProjectLayout>
-        <Error error={error} />
-      </ProjectLayout>
-    )
-  }
-
-  return (
+  return content.error ? (
+    <ProjectLayout>
+      <Error error={content.error} />
+    </ProjectLayout>
+  ) : (
     <ProjectLayout
-      isLoading={!loaded}
+      isLoading={content.isLoading}
       title={title || 'SQL'}
       product="SQL Editor"
-      productMenu={<SQLEditorMenuOld />}
+      productMenu={<SQLEditorMenu />}
     >
       {children}
     </ProjectLayout>

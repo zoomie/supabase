@@ -1,19 +1,14 @@
 import { FC, useEffect, useState } from 'react'
 import { isUndefined, isEmpty } from 'lodash'
-import { toast } from 'react-hot-toast'
-import { Badge, Checkbox, Divider, SidePanel, Space, Input, Typography } from '@supabase/ui'
-import { PostgresTable } from '@supabase/postgres-meta'
+import { Badge, Checkbox, SidePanel, Input } from '@supabase/ui'
+import { PostgresTable, PostgresType } from '@supabase/postgres-meta'
 
+import { useStore } from 'hooks'
 import ActionBar from '../ActionBar'
 import HeaderTitle from './HeaderTitle'
 import ColumnManagement from './ColumnManagement'
 import SpreadsheetImport from './SpreadsheetImport/SpreadsheetImport'
-import {
-  ColumnField,
-  EnumType,
-  CreateTablePayload,
-  UpdateTablePayload,
-} from '../SidePanelEditor.types'
+import { ColumnField, CreateTablePayload, UpdateTablePayload } from '../SidePanelEditor.types'
 import { DEFAULT_COLUMNS } from './TableEditor.constants'
 import { TableField, ImportContent } from './TableEditor.types'
 import {
@@ -26,7 +21,7 @@ import {
 interface Props {
   table?: PostgresTable
   tables: PostgresTable[]
-  enumTypes: EnumType[]
+  enumTypes: PostgresType[]
   selectedSchema: string
   isDuplicating: boolean
   visible: boolean
@@ -49,7 +44,7 @@ interface Props {
 const TableEditor: FC<Props> = ({
   table,
   tables = [],
-  enumTypes = [] as EnumType[],
+  enumTypes = [] as PostgresType[],
   selectedSchema,
   isDuplicating,
   visible = false,
@@ -57,6 +52,7 @@ const TableEditor: FC<Props> = ({
   saveChanges = () => {},
   updateEditorDirty = () => {},
 }) => {
+  const { ui } = useStore()
   const isNewRecord = isUndefined(table)
 
   const [errors, setErrors] = useState<any>({})
@@ -102,7 +98,9 @@ const TableEditor: FC<Props> = ({
   const onSaveChanges = (resolve: any) => {
     if (tableFields) {
       const errors: any = validateFields(tableFields)
-      if (errors.columns) toast.error(errors.columns)
+      if (errors.columns) {
+        ui.setNotification({ category: 'error', message: errors.columns })
+      }
       setErrors(errors)
 
       if (isEmpty(errors)) {
@@ -111,13 +109,23 @@ const TableEditor: FC<Props> = ({
           comment: tableFields.comment,
           ...(!isNewRecord && { rls_enabled: tableFields.isRLSEnabled }),
         }
+        const columns = tableFields.columns.map((column) => {
+          if (column.foreignKey) {
+            return {
+              ...column,
+              foreignKey: { ...column.foreignKey, source_table_name: tableFields.name },
+            }
+          }
+          return column
+        })
         const configuration = {
           tableId: table?.id,
           importContent,
           isRLSEnabled: tableFields.isRLSEnabled,
           isDuplicateRows: isDuplicateRows,
         }
-        saveChanges(payload, tableFields.columns, isNewRecord, configuration, resolve)
+
+        saveChanges(payload, columns, isNewRecord, configuration, resolve)
       } else {
         resolve()
       }
@@ -128,14 +136,14 @@ const TableEditor: FC<Props> = ({
 
   return (
     <SidePanel
-      wide
+      size="large"
       key="TableEditor"
       visible={visible}
       // @ts-ignore
-      title={<HeaderTitle table={table} isDuplicating={isDuplicating} />}
-      className={`transition-all ease-in duration-100 ${isImportingSpreadsheet ? ' mr-32' : ''}`}
+      header={<HeaderTitle table={table} isDuplicating={isDuplicating} />}
+      className={`transition-all duration-100 ease-in ${isImportingSpreadsheet ? ' mr-32' : ''}`}
       onCancel={closePanel}
-      onConfirm={(resolve: () => void) => onSaveChanges(resolve)}
+      onConfirm={() => (resolve: () => void) => onSaveChanges(resolve)}
       customFooter={
         <ActionBar
           backButtonLabel="Cancel"
@@ -145,78 +153,91 @@ const TableEditor: FC<Props> = ({
         />
       }
     >
-      <Space direction="vertical" size={6} style={{ width: '100%' }}>
-        <Input
-          label="Name"
-          layout="horizontal"
-          type="text"
-          error={errors.name}
-          value={tableFields?.name}
-          onChange={(event: any) => onUpdateField({ name: event.target.value })}
-        />
-        <Input
-          label="Description"
-          placeholder="Optional"
-          layout="horizontal"
-          type="text"
-          value={tableFields?.comment ?? ''}
-          onChange={(event: any) => onUpdateField({ comment: event.target.value })}
-        />
-        <div />
-        <Checkbox
-          id="enable-rls"
-          // @ts-ignore
-          label={
-            <div className="flex items-center space-x-2">
-              <Typography.Text>Enable Row Level Security (RLS)</Typography.Text>
-              <Badge color="green">Recommended</Badge>
-            </div>
-          }
-          description="Restrict access to your table by enabling RLS and writing Postgres policies"
-          checked={tableFields?.isRLSEnabled}
-          onChange={() => onUpdateField({ isRLSEnabled: !tableFields?.isRLSEnabled })}
-          size="medium"
-        />
-        <Divider light />
-        {!isDuplicating && (
-          <ColumnManagement
-            table={{ name: tableFields.name, schema: selectedSchema }}
-            tables={tables}
-            columns={tableFields?.columns}
-            enumTypes={enumTypes}
-            isNewRecord={isNewRecord}
-            importContent={importContent}
-            onColumnsUpdated={(columns) => onUpdateField({ columns })}
-            onSelectImportData={() => setIsImportingSpreadsheet(true)}
-            onClearImportContent={() => {
-              onUpdateField({ columns: DEFAULT_COLUMNS })
-              setImportContent(undefined)
-            }}
-          />
-        )}
-        {isDuplicating && (
-          <>
+      <>
+        <SidePanel.Content>
+          <div className="space-y-10 py-6">
+            <Input
+              label="Name"
+              layout="horizontal"
+              type="text"
+              error={errors.name}
+              value={tableFields?.name}
+              onChange={(event: any) => onUpdateField({ name: event.target.value })}
+            />
+            <Input
+              label="Description"
+              placeholder="Optional"
+              layout="horizontal"
+              type="text"
+              value={tableFields?.comment ?? ''}
+              onChange={(event: any) => onUpdateField({ comment: event.target.value })}
+            />
+          </div>
+        </SidePanel.Content>
+        <SidePanel.Seperator />
+        <SidePanel.Content>
+          <div className="space-y-10 py-6">
             <Checkbox
-              id="duplicate-rows"
-              label="Duplicate table entries"
-              description="This will copy all the data in the table into the new table"
-              checked={isDuplicateRows}
-              onChange={() => setIsDuplicateRows(!isDuplicateRows)}
+              id="enable-rls"
+              // @ts-ignore
+              label={
+                <div className="flex items-center space-x-2">
+                  <span>Enable Row Level Security (RLS)</span>
+                  <Badge color="gray">Recommended</Badge>
+                </div>
+              }
+              description="Restrict access to your table by enabling RLS and writing Postgres policies"
+              checked={tableFields?.isRLSEnabled}
+              onChange={() => onUpdateField({ isRLSEnabled: !tableFields?.isRLSEnabled })}
               size="medium"
             />
-          </>
-        )}
-      </Space>
-      <SpreadsheetImport
-        visible={isImportingSpreadsheet}
-        headers={importContent?.headers}
-        rows={importContent?.rows}
-        saveContent={(prefillData: ImportContent) => {
-          setImportContent(prefillData)
-          setIsImportingSpreadsheet(false)
-        }}
-        closePanel={() => setIsImportingSpreadsheet(false)}
-      />
+          </div>
+        </SidePanel.Content>
+        <SidePanel.Seperator />
+        <SidePanel.Content>
+          <div className="space-y-10 py-6">
+            {!isDuplicating && (
+              <ColumnManagement
+                table={{ name: tableFields.name, schema: selectedSchema }}
+                tables={tables}
+                columns={tableFields?.columns}
+                enumTypes={enumTypes}
+                isNewRecord={isNewRecord}
+                importContent={importContent}
+                onColumnsUpdated={(columns) => onUpdateField({ columns })}
+                onSelectImportData={() => setIsImportingSpreadsheet(true)}
+                onClearImportContent={() => {
+                  onUpdateField({ columns: DEFAULT_COLUMNS })
+                  setImportContent(undefined)
+                }}
+              />
+            )}
+            {isDuplicating && (
+              <>
+                <Checkbox
+                  id="duplicate-rows"
+                  label="Duplicate table entries"
+                  description="This will copy all the data in the table into the new table"
+                  checked={isDuplicateRows}
+                  onChange={() => setIsDuplicateRows(!isDuplicateRows)}
+                  size="medium"
+                />
+              </>
+            )}
+
+            <SpreadsheetImport
+              visible={isImportingSpreadsheet}
+              headers={importContent?.headers}
+              rows={importContent?.rows}
+              saveContent={(prefillData: ImportContent) => {
+                setImportContent(prefillData)
+                setIsImportingSpreadsheet(false)
+              }}
+              closePanel={() => setIsImportingSpreadsheet(false)}
+            />
+          </div>
+        </SidePanel.Content>
+      </>
     </SidePanel>
   )
 }

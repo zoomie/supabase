@@ -7,9 +7,17 @@ type TableProps = {
   className?: string
   containerClassName?: string
   borderless?: boolean
+  headTrClasses?: string
 }
 
-function Table({ body, head, className, containerClassName, borderless }: TableProps) {
+function Table({
+  body,
+  head,
+  className,
+  containerClassName,
+  borderless,
+  headTrClasses,
+}: TableProps) {
   let containerClasses = ['table-container']
   if (containerClassName) containerClasses.push(containerClassName)
   if (borderless) containerClasses.push('table-container--borderless')
@@ -21,7 +29,7 @@ function Table({ body, head, className, containerClassName, borderless }: TableP
     <div className={containerClasses.join(' ')}>
       <table className={classes.join(' ')}>
         <thead>
-          <tr>{head}</tr>
+          <tr className={headTrClasses}>{head}</tr>
         </thead>
         <tbody>{body}</tbody>
       </table>
@@ -68,10 +76,10 @@ type TdProps = {
   colSpan?: number
   className?: string
   style?: React.CSSProperties
-}
-const Td: React.FC<TdProps> = ({ children, colSpan, className, style }) => {
+} & React.HTMLProps<HTMLTableCellElement>
+const Td: React.FC<TdProps> = ({ children, colSpan, className, style, ...rest }) => {
   return (
-    <td className={className} colSpan={colSpan} style={style}>
+    <td className={className} colSpan={colSpan} style={style} {...rest}>
       {children}
     </td>
   )

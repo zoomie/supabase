@@ -12,6 +12,7 @@ import { useStore, withAuth } from 'hooks'
 import { TableEditorLayout } from 'components/layouts'
 import { TableGridEditor } from 'components/interfaces'
 import ConfirmationModal from 'components/ui/ConfirmationModal'
+import { Modal } from '@supabase/ui'
 
 const TableEditorPage: NextPage = () => {
   const router = useRouter()
@@ -33,7 +34,8 @@ const TableEditorPage: NextPage = () => {
   const projectRef = ui.selectedProject?.ref
   const tables: PostgresTable[] = meta.tables.list()
   const selectedTable = !isNaN(Number(id))
-    ? tables.find((table) => table.id === Number(id))
+    ? // @ts-ignore
+      tables.find((table) => table.id === Number(id))
     : tryParseJson(Base64.decode(id))
 
   useEffect(() => {
@@ -113,10 +115,12 @@ const TableEditorPage: NextPage = () => {
 
   const onConfirmDeleteTable = async () => {
     try {
-      const tables = meta.tables.list((table: PostgresTable) => table.schema === selectedSchema)
-      const response: any = await meta.tables.del(selectedTableToDelete!.id)
+      if (isUndefined(selectedTableToDelete)) return
 
+      const response: any = await meta.tables.del(selectedTableToDelete.id)
       if (response.error) throw response.error
+
+      const tables = meta.tables.list((table: PostgresTable) => table.schema === selectedSchema)
 
       // For simplicity for now, we just open the first table within the same schema
       if (tables.length > 0) {
@@ -126,12 +130,13 @@ const TableEditorPage: NextPage = () => {
       }
       ui.setNotification({
         category: 'success',
-        message: `Successfully deleted ${selectedTableToDelete!.name}`,
+        message: `Successfully deleted ${selectedTableToDelete.name}`,
       })
     } catch (error: any) {
       ui.setNotification({
+        error,
         category: 'error',
-        message: `Failed to delete ${selectedTableToDelete!.name}: ${error.message}`,
+        message: `Failed to delete ${selectedTableToDelete?.name}: ${error.message}`,
       })
     } finally {
       setIsDeleting(false)
@@ -166,8 +171,14 @@ const TableEditorPage: NextPage = () => {
       <ConfirmationModal
         danger
         visible={isDeleting && !isUndefined(selectedColumnToDelete)}
-        title={`Confirm deletion of column "${selectedColumnToDelete?.name}"`}
-        description={`Are you sure you want to delete the selected column? This action cannot be undone`}
+        header={`Confirm deletion of column "${selectedColumnToDelete?.name}"`}
+        children={
+          <Modal.Content>
+            <p className="text-scale-1100 py-4 text-sm">
+              Are you sure you want to delete the selected column? This action cannot be undone.
+            </p>
+          </Modal.Content>
+        }
         buttonLabel="Delete"
         buttonLoadingLabel="Deleting"
         onSelectCancel={() => setIsDeleting(false)}
@@ -176,8 +187,14 @@ const TableEditorPage: NextPage = () => {
       <ConfirmationModal
         danger
         visible={isDeleting && !isUndefined(selectedTableToDelete)}
-        title={`Confirm deletion of table "${selectedTableToDelete?.name}"`}
-        description={`Are you sure you want to delete the selected table? This action cannot be undone`}
+        header={`Confirm deletion of table "${selectedTableToDelete?.name}"`}
+        children={
+          <Modal.Content>
+            <p className="text-scale-1100 py-4 text-sm">
+              Are you sure you want to delete the selected table? This action cannot be undone.
+            </p>
+          </Modal.Content>
+        }
         buttonLabel="Delete"
         buttonLoadingLabel="Deleting"
         onSelectCancel={() => setIsDeleting(false)}

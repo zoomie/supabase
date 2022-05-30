@@ -1,13 +1,13 @@
 import useSWR from 'swr'
 import { observer } from 'mobx-react-lite'
 import { useState, useEffect } from 'react'
-import { toast } from 'react-hot-toast'
 import { useRouter } from 'next/router'
 import { AutoField, NumField } from 'uniforms-bootstrap4'
-import { Button, Divider, Typography, Toggle as UIToggle } from '@supabase/ui'
+import { Button, Typography, Toggle as UIToggle } from '@supabase/ui'
+import Divider from 'components/ui/Divider'
 
 import { API_URL } from 'lib/constants'
-import { withAuth, useStore } from 'hooks'
+import { useStore } from 'hooks'
 import { authConfig } from 'stores/jsonSchema'
 import { get, patch } from 'lib/common/fetch'
 import { pluckJsonSchemaFields } from 'lib/helpers'
@@ -18,26 +18,28 @@ import Toggle from 'components/to-be-cleaned/forms/Toggle'
 import ToggleField from 'components/to-be-cleaned/forms/ToggleField'
 import SecretField from 'components/to-be-cleaned/forms/SecretField'
 import SchemaFormPanel from 'components/to-be-cleaned/forms/SchemaFormPanel'
+import { NextPageWithLayout } from 'types'
 
-const SMTP_ADMIN_EMAIL = 'noreply@mail.app.supabase.io'
-
-const Auth = () => {
+const Auth: NextPageWithLayout = () => {
   return (
-    <AuthLayout title="Auth">
-      <div className="p-4">
-        <Settings />
-      </div>
-    </AuthLayout>
+    <div className="p-4">
+      <Settings />
+    </div>
   )
 }
-export default withAuth(observer(Auth))
+
+Auth.getLayout = (page) => <AuthLayout title="Auth">{page}</AuthLayout>
+
+export default observer(Auth)
 
 const Settings = () => {
   const router = useRouter()
+  const { ui } = useStore()
+
   const [model, setModel] = useState<any>({})
   const [smsProviderModel, setSmsProviderModel] = useState<any>({})
   const [externalProvidersModel, setExternalProvidersModel] = useState<any>({})
-  const [isCustomSMTPEnabled, setCustomSMTP] = useState<any>(false)
+  const [isCustomSMTPEnabled, setCustomSMTP] = useState<boolean>(false)
   const URL = `${API_URL}/auth/${router.query.ref}/config`
   const { data: config, error }: any = useSWR(URL, get)
   const { ref: projectRef } = router.query
@@ -54,12 +56,11 @@ const Settings = () => {
   useEffect(() => {
     if (config) {
       const temp =
-        (config.SMTP_ADMIN_EMAIL && config.SMTP_ADMIN_EMAIL !== SMTP_ADMIN_EMAIL) ||
+        config.SMTP_ADMIN_EMAIL ||
         config.SMTP_HOST ||
         config.SMTP_PORT ||
         config.SMTP_USER ||
-        config.SMTP_PASS ||
-        config.SMTP_SENDER_NAME
+        config.SMTP_PASS
       setCustomSMTP(temp)
     }
     setModel({ ...config })
@@ -75,11 +76,14 @@ const Settings = () => {
     }
     const response = await patch(URL, model)
     if (response.error) {
-      toast.error(`Update config failed: ${response.error.message}`)
+      ui.setNotification({
+        category: 'error',
+        message: `Update config failed: ${response.error.message}`,
+      })
     } else {
       const updates = response
       setModel({ ...updates })
-      toast(`Settings saved`)
+      ui.setNotification({ category: 'success', message: 'Settings saved' })
     }
   }
 
@@ -98,9 +102,9 @@ const Settings = () => {
       if (response.error) throw response.error
       const updates = response
       setModel({ ...updates })
-      toast(`Settings saved`)
+      ui.setNotification({ category: 'success', message: 'Settings saved' })
     } catch (error: any) {
-      toast.error(`Update config failed: ${error.message}`)
+      ui.setNotification({ category: 'error', message: `Update config failed: ${error.message}` })
     }
   }
 
@@ -118,12 +122,17 @@ const Settings = () => {
             'URI_ALLOW_LIST',
             'JWT_EXP',
             'DISABLE_SIGNUP',
+            'PASSWORD_MIN_LENGTH',
+            'SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION',
           ])}
           model={{
             SITE_URL: model.SITE_URL || undefined,
             URI_ALLOW_LIST: model.URI_ALLOW_LIST || undefined,
             DISABLE_SIGNUP: model.DISABLE_SIGNUP,
             JWT_EXP: model.JWT_EXP || undefined,
+            PASSWORD_MIN_LENGTH: model.PASSWORD_MIN_LENGTH || undefined,
+            SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION:
+              model.SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION || false,
           }}
           onSubmit={(model: any) => onFormSubmit(model)}
         >
@@ -138,6 +147,8 @@ const Settings = () => {
             errorMessage="Must be a comma separated list of exact URIs. No spaces."
           />
           <NumField name="JWT_EXP" step="1" />
+          <NumField name="PASSWORD_MIN_LENGTH" step="1" />
+          <ToggleField name="SECURITY_UPDATE_PASSWORD_REQUIRE_REAUTHENTICATION" />
           <ToggleField name="DISABLE_SIGNUP" />
         </SchemaFormPanel>
       </div>
@@ -152,15 +163,17 @@ const Settings = () => {
             'SMTP_USER',
             'SMTP_PASS',
             'SMTP_SENDER_NAME',
+            'RATE_LIMIT_EMAIL_SENT',
           ])}
           model={{
             MAILER_SECURE_EMAIL_CHANGE_ENABLED: model.MAILER_SECURE_EMAIL_CHANGE_ENABLED,
-            SMTP_ADMIN_EMAIL: isCustomSMTPEnabled ? model.SMTP_ADMIN_EMAIL : SMTP_ADMIN_EMAIL,
-            SMTP_HOST: isCustomSMTPEnabled ? model.SMTP_HOST : undefined,
-            SMTP_PORT: isCustomSMTPEnabled ? model.SMTP_PORT : undefined,
-            SMTP_USER: isCustomSMTPEnabled ? model.SMTP_USER : undefined,
-            SMTP_PASS: isCustomSMTPEnabled ? model.SMTP_PASS : undefined,
-            SMTP_SENDER_NAME: isCustomSMTPEnabled ? model.SMTP_SENDER_NAME : undefined,
+            SMTP_ADMIN_EMAIL: isCustomSMTPEnabled ? model.SMTP_ADMIN_EMAIL : '',
+            SMTP_HOST: isCustomSMTPEnabled ? model.SMTP_HOST : '',
+            SMTP_PORT: isCustomSMTPEnabled ? model.SMTP_PORT : '',
+            SMTP_USER: isCustomSMTPEnabled ? model.SMTP_USER : '',
+            SMTP_PASS: isCustomSMTPEnabled ? model.SMTP_PASS : '',
+            SMTP_SENDER_NAME: isCustomSMTPEnabled ? model.SMTP_SENDER_NAME : '',
+            RATE_LIMIT_EMAIL_SENT: isCustomSMTPEnabled ? model.RATE_LIMIT_EMAIL_SENT : 30,
           }}
           onSubmit={(model: any) =>
             onFormSubmit({
@@ -195,36 +208,38 @@ const Settings = () => {
             className="mb-4"
             label={authConfig.properties.MAILER_AUTOCONFIRM.title}
             onChange={(value) => {
+              // If MAILER_AUTOCONFIRM is set to true, it means we are disabling email confirmations.
+              // "Enable email confirmations" should be toggled off.
               handleToggle('MAILER_AUTOCONFIRM', !value)
             }}
             checked={!model.MAILER_AUTOCONFIRM}
             descriptionText={authConfig.properties.MAILER_AUTOCONFIRM.help}
           />
 
-          <div className="form-group items-center">
-            <label className="">Enable Custom SMTP</label>
-            <div className="form-control flex items-center">
-              <Toggle
-                onToggle={() => {
-                  /*
-                   * temporary solution
-                   * clear the values of SMTP when toggling
-                   */
-                  onFormSubmit({
-                    SMTP_ADMIN_EMAIL: SMTP_ADMIN_EMAIL,
-                    SMTP_HOST: null,
-                    SMTP_PORT: null,
-                    SMTP_USER: null,
-                    SMTP_PASS: null,
-                    SMTP_SENDER_NAME: null,
-                  })
-
-                  setCustomSMTP(!isCustomSMTPEnabled)
-                }}
-                isOn={isCustomSMTPEnabled}
-              />
-            </div>
-          </div>
+          <UIToggle
+            layout="horizontal"
+            className="mb-4"
+            label="Enable Custom SMTP"
+            checked={isCustomSMTPEnabled}
+            onChange={(value: any) => {
+              /*
+               * temporary solution
+               * clear the values of SMTP when toggling
+               */
+              if (!value) {
+                onFormSubmit({
+                  SMTP_ADMIN_EMAIL: '',
+                  SMTP_HOST: '',
+                  SMTP_PORT: '',
+                  SMTP_USER: '',
+                  SMTP_PASS: '',
+                  SMTP_SENDER_NAME: '',
+                  RATE_LIMIT_EMAIL_SENT: 30,
+                })
+              }
+              setCustomSMTP(!isCustomSMTPEnabled)
+            }}
+          />
           {isCustomSMTPEnabled && (
             <>
               <AutoField
@@ -241,6 +256,12 @@ const Settings = () => {
                 showInlineError
                 errorMessage="Please enter from name."
               />
+              <NumField
+                showInlineError
+                step="1"
+                name="RATE_LIMIT_EMAIL_SENT"
+                errorMessage="Please enter a value between 1 to 32767"
+              />
             </>
           )}
         </SchemaFormPanel>
@@ -256,14 +277,24 @@ const Settings = () => {
             'SMS_TWILIO_MESSAGE_SERVICE_SID',
             'SMS_MESSAGEBIRD_ORIGINATOR',
             'SMS_MESSAGEBIRD_ACCESS_KEY',
+            'SMS_TEXTLOCAL_API_KEY',
+            'SMS_TEXTLOCAL_SENDER',
+            'SMS_VONAGE_API_KEY',
+            'SMS_VONAGE_API_SECRET',
+            'SMS_VONAGE_FROM',
           ])}
           model={{
             SMS_PROVIDER: model.SMS_PROVIDER,
+            SMS_TEXTLOCAL_API_KEY: model.SMS_TEXTLOCAL_API_KEY || undefined,
+            SMS_TEXTLOCAL_SENDER: model.SMS_TEXTLOCAL_SENDER || undefined,
             SMS_TWILIO_ACCOUNT_SID: model.SMS_TWILIO_ACCOUNT_SID || undefined,
             SMS_TWILIO_AUTH_TOKEN: model.SMS_TWILIO_AUTH_TOKEN || undefined,
             SMS_TWILIO_MESSAGE_SERVICE_SID: model.SMS_TWILIO_MESSAGE_SERVICE_SID || undefined,
             SMS_MESSAGEBIRD_ORIGINATOR: model.SMS_MESSAGEBIRD_ORIGINATOR || undefined,
             SMS_MESSAGEBIRD_ACCESS_KEY: model.SMS_MESSAGEBIRD_ACCESS_KEY || undefined,
+            SMS_VONAGE_API_KEY: model.SMS_VONAGE_API_KEY || undefined,
+            SMS_VONAGE_API_SECRET: model.SMS_VONAGE_API_SECRET || undefined,
+            SMS_VONAGE_FROM: model.SMS_VONAGE_FROM || undefined,
           }}
           onChangeModel={(model: any) => setSmsProviderModel(model)}
           onSubmit={(model: any) => onFormSubmit(model)}
@@ -300,6 +331,37 @@ const Settings = () => {
                       errorMessage="Please enter the messagebird originator."
                     />
                   </>
+                ) : smsProviderModel?.SMS_PROVIDER === 'textlocal' ? (
+                  <>
+                    <AutoField
+                      name="SMS_TEXTLOCAL_API_KEY"
+                      showInlineError
+                      errorMessage="Please enter the vonage account sid."
+                    />
+                    <SecretField
+                      name="SMS_TEXTLOCAL_SENDER"
+                      showInlineError
+                      errorMessage="Please enter the vonage auth token."
+                    />
+                  </>
+                ) : smsProviderModel?.SMS_PROVIDER === 'vonage' ? (
+                  <>
+                    <AutoField
+                      name="SMS_VONAGE_API_KEY"
+                      showInlineError
+                      errorMessage="Please enter the vonage account sid."
+                    />
+                    <SecretField
+                      name="SMS_VONAGE_API_SECRET"
+                      showInlineError
+                      errorMessage="Please enter the vonage auth token."
+                    />
+                    <AutoField
+                      name="SMS_VONAGE_FROM"
+                      showInlineError
+                      errorMessage="Please enter the vonage message service sid."
+                    />
+                  </>
                 ) : (
                   <>
                     <AutoField
@@ -324,10 +386,13 @@ const Settings = () => {
             <UIToggle
               layout="horizontal"
               label={authConfig.properties.SMS_AUTOCONFIRM.title}
-              onChange={() => {
-                handleToggle('SMS_AUTOCONFIRM')
+              onChange={(value) => {
+                // If SMS_AUTOCONFIRM is set to true, it means we are disabling phone confirmations.
+                // "Enable phone confirmations" should be toggled off.
+                handleToggle('SMS_AUTOCONFIRM', !value)
               }}
-              checked={model.SMS_AUTOCONFIRM}
+              //
+              checked={!model.SMS_AUTOCONFIRM}
               descriptionText={authConfig.properties.SMS_AUTOCONFIRM.help}
             />
           </>
@@ -343,6 +408,7 @@ const Settings = () => {
             'EXTERNAL_AZURE_ENABLED',
             'EXTERNAL_AZURE_CLIENT_ID',
             'EXTERNAL_AZURE_SECRET',
+            'EXTERNAL_AZURE_URL',
             'EXTERNAL_BITBUCKET_ENABLED',
             'EXTERNAL_BITBUCKET_CLIENT_ID',
             'EXTERNAL_BITBUCKET_SECRET',
@@ -361,6 +427,16 @@ const Settings = () => {
             'EXTERNAL_GITLAB_ENABLED',
             'EXTERNAL_GITLAB_CLIENT_ID',
             'EXTERNAL_GITLAB_SECRET',
+            'EXTERNAL_KEYCLOAK_ENABLED',
+            'EXTERNAL_KEYCLOAK_CLIENT_ID',
+            'EXTERNAL_KEYCLOAK_SECRET',
+            'EXTERNAL_KEYCLOAK_URL',
+            'EXTERNAL_LINKEDIN_ENABLED',
+            'EXTERNAL_LINKEDIN_CLIENT_ID',
+            'EXTERNAL_LINKEDIN_SECRET',
+            'EXTERNAL_NOTION_ENABLED',
+            'EXTERNAL_NOTION_CLIENT_ID',
+            'EXTERNAL_NOTION_SECRET',
             'EXTERNAL_TWITCH_ENABLED',
             'EXTERNAL_TWITCH_CLIENT_ID',
             'EXTERNAL_TWITCH_SECRET',
@@ -373,6 +449,13 @@ const Settings = () => {
             'EXTERNAL_SPOTIFY_ENABLED',
             'EXTERNAL_SPOTIFY_CLIENT_ID',
             'EXTERNAL_SPOTIFY_SECRET',
+            'EXTERNAL_WORKOS_ENABLED',
+            'EXTERNAL_WORKOS_CLIENT_ID',
+            'EXTERNAL_WORKOS_SECRET',
+            'EXTERNAL_WORKOS_URL',
+            'EXTERNAL_ZOOM_ENABLED',
+            'EXTERNAL_ZOOM_CLIENT_ID',
+            'EXTERNAL_ZOOM_SECRET',
           ])}
           model={{
             EXTERNAL_APPLE_ENABLED: model.EXTERNAL_APPLE_ENABLED,
@@ -381,6 +464,7 @@ const Settings = () => {
             EXTERNAL_AZURE_ENABLED: model.EXTERNAL_AZURE_ENABLED,
             EXTERNAL_AZURE_CLIENT_ID: model.EXTERNAL_AZURE_CLIENT_ID || undefined,
             EXTERNAL_AZURE_SECRET: model.EXTERNAL_AZURE_SECRET || undefined,
+            EXTERNAL_AZURE_URL: model.EXTERNAL_AZURE_URL || undefined,
             EXTERNAL_BITBUCKET_ENABLED: model.EXTERNAL_BITBUCKET_ENABLED,
             EXTERNAL_BITBUCKET_CLIENT_ID: model.EXTERNAL_BITBUCKET_CLIENT_ID || undefined,
             EXTERNAL_BITBUCKET_SECRET: model.EXTERNAL_BITBUCKET_SECRET || undefined,
@@ -399,6 +483,16 @@ const Settings = () => {
             EXTERNAL_GOOGLE_ENABLED: model.EXTERNAL_GOOGLE_ENABLED,
             EXTERNAL_GOOGLE_CLIENT_ID: model.EXTERNAL_GOOGLE_CLIENT_ID || undefined,
             EXTERNAL_GOOGLE_SECRET: model.EXTERNAL_GOOGLE_SECRET || undefined,
+            EXTERNAL_KEYCLOAK_ENABLED: model.EXTERNAL_KEYCLOAK_ENABLED,
+            EXTERNAL_KEYCLOAK_CLIENT_ID: model.EXTERNAL_KEYCLOAK_CLIENT_ID || undefined,
+            EXTERNAL_KEYCLOAK_SECRET: model.EXTERNAL_KEYCLOAK_SECRET || undefined,
+            EXTERNAL_KEYCLOAK_URL: model.EXTERNAL_KEYCLOAK_URL || undefined,
+            EXTERNAL_LINKEDIN_ENABLED: model.EXTERNAL_LINKEDIN_ENABLED,
+            EXTERNAL_LINKEDIN_CLIENT_ID: model.EXTERNAL_LINKEDIN_CLIENT_ID || undefined,
+            EXTERNAL_LINKEDIN_SECRET: model.EXTERNAL_LINKEDIN_SECRET || undefined,
+            EXTERNAL_NOTION_ENABLED: model.EXTERNAL_NOTION_ENABLED,
+            EXTERNAL_NOTION_CLIENT_ID: model.EXTERNAL_NOTION_CLIENT_ID || undefined,
+            EXTERNAL_NOTION_SECRET: model.EXTERNAL_NOTION_SECRET || undefined,
             EXTERNAL_TWITCH_ENABLED: model.EXTERNAL_TWITCH_ENABLED,
             EXTERNAL_TWITCH_CLIENT_ID: model.EXTERNAL_TWITCH_CLIENT_ID || undefined,
             EXTERNAL_TWITCH_SECRET: model.EXTERNAL_TWITCH_SECRET || undefined,
@@ -411,6 +505,13 @@ const Settings = () => {
             EXTERNAL_SPOTIFY_ENABLED: model.EXTERNAL_SPOTIFY_ENABLED,
             EXTERNAL_SPOTIFY_CLIENT_ID: model.EXTERNAL_SPOTIFY_CLIENT_ID || undefined,
             EXTERNAL_SPOTIFY_SECRET: model.EXTERNAL_SPOTIFY_SECRET || undefined,
+            EXTERNAL_WORKOS_ENABLED: model.EXTERNAL_WORKOS_ENABLED,
+            EXTERNAL_WORKOS_CLIENT_ID: model.EXTERNAL_WORKOS_CLIENT_ID || undefined,
+            EXTERNAL_WORKOS_SECRET: model.EXTERNAL_WORKOS_SECRET || undefined,
+            EXTERNAL_WORKOS_URL: model.EXTERNAL_WORKOS_URL || undefined,
+            EXTERNAL_ZOOM_ENABLED: model.EXTERNAL_ZOOM_ENABLED,
+            EXTERNAL_ZOOM_CLIENT_ID: model.EXTERNAL_ZOOM_CLIENT_ID || undefined,
+            EXTERNAL_ZOOM_SECRET: model.EXTERNAL_ZOOM_SECRET || undefined,
           }}
           onChangeModel={(model) => setExternalProvidersModel(model)}
           onReset={() => onFormReset()}
@@ -421,7 +522,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_APPLE_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://developer.apple.com/account/resources/identifiers/add/bundleId"
                   target="_blank"
                 >
@@ -450,7 +551,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_AZURE_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://docs.microsoft.com/en-us/azure/active-directory/develop/quickstart-register-app"
                   target="_blank"
                 >
@@ -471,6 +572,11 @@ const Settings = () => {
                 showInlineError
                 errorMessage="Please enter the secret."
               />
+              <AutoField
+                name="EXTERNAL_AZURE_URL"
+                showInlineError
+                errorMessage="Please enter the azure tenant url."
+              />
             </>
           )}
           <Divider light />
@@ -479,7 +585,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_BITBUCKET_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://support.atlassian.com/bitbucket-cloud/docs/use-oauth-on-bitbucket-cloud/"
                   target="_blank"
                 >
@@ -508,7 +614,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_DISCORD_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://discord.com/developers/applications#top"
                   target="_blank"
                 >
@@ -537,7 +643,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_FACEBOOK_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://developers.facebook.com/apps/"
                   target="_blank"
                 >
@@ -566,7 +672,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_GITHUB_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://github.com/settings/applications/new"
                   target="_blank"
                 >
@@ -595,7 +701,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_GITLAB_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://gitlab.com/oauth/applications"
                   target="_blank"
                 >
@@ -624,7 +730,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_GOOGLE_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://console.developers.google.com/apis/credentials"
                   target="_blank"
                 >
@@ -649,11 +755,99 @@ const Settings = () => {
           )}
           <Divider light />
           <ToggleField
+            name="EXTERNAL_KEYCLOAK_ENABLED"
+            addOns={
+              externalProvidersModel.EXTERNAL_KEYCLOAK_ENABLED && (
+                <a className="text-scale-900 pl-4" href="https://www.keycloak.org/" target="_blank">
+                  Create new credentials
+                </a>
+              )
+            }
+          />
+          {externalProvidersModel.EXTERNAL_KEYCLOAK_ENABLED && (
+            <>
+              <AutoField
+                name="EXTERNAL_KEYCLOAK_CLIENT_ID"
+                showInlineError
+                errorMessage="Please enter the client id."
+              />
+              <SecretField
+                name="EXTERNAL_KEYCLOAK_SECRET"
+                showInlineError
+                errorMessage="Please enter the secret."
+              />
+              <AutoField
+                name="EXTERNAL_KEYCLOAK_URL"
+                showInlineError
+                errorMessage="Please enter the Keycloak url."
+              />
+            </>
+          )}
+          <Divider light />
+          <ToggleField
+            name="EXTERNAL_LINKEDIN_ENABLED"
+            addOns={
+              externalProvidersModel.EXTERNAL_LINKEDIN_ENABLED && (
+                <a
+                  className="pl-4 text-gray-400"
+                  href="https://www.linkedin.com/developers/apps"
+                  target="_blank"
+                >
+                  Create new credentials
+                </a>
+              )
+            }
+          />
+          {externalProvidersModel.EXTERNAL_LINKEDIN_ENABLED && (
+            <>
+              <AutoField
+                name="EXTERNAL_LINKEDIN_CLIENT_ID"
+                showInlineError
+                errorMessage="Please enter the client id."
+              />
+              <SecretField
+                name="EXTERNAL_LINKEDIN_SECRET"
+                showInlineError
+                errorMessage="Please enter the secret."
+              />
+            </>
+          )}
+          <Divider light />
+          <ToggleField
+            name="EXTERNAL_NOTION_ENABLED"
+            addOns={
+              externalProvidersModel.EXTERNAL_NOTION_ENABLED && (
+                <a
+                  className="pl-4 text-gray-400"
+                  href="https://www.notion.so/my-integrations"
+                  target="_blank"
+                >
+                  Create new credentials
+                </a>
+              )
+            }
+          />
+          {externalProvidersModel.EXTERNAL_NOTION_ENABLED && (
+            <>
+              <AutoField
+                name="EXTERNAL_NOTION_CLIENT_ID"
+                showInlineError
+                errorMessage="Please enter the client id."
+              />
+              <SecretField
+                name="EXTERNAL_NOTION_SECRET"
+                showInlineError
+                errorMessage="Please enter the secret."
+              />
+            </>
+          )}
+          <Divider light />
+          <ToggleField
             name="EXTERNAL_TWITCH_ENABLED"
             addOns={
               externalProvidersModel.EXTERNAL_TWITCH_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://dev.twitch.tv/console"
                   target="_blank"
                 >
@@ -682,7 +876,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_TWITTER_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://developer.twitter.com/en/portal/dashboard"
                   target="_blank"
                 >
@@ -710,7 +904,11 @@ const Settings = () => {
             name="EXTERNAL_SLACK_ENABLED"
             addOns={
               externalProvidersModel.EXTERNAL_SLACK_ENABLED && (
-                <a className="pl-4 text-gray-400" href="https://api.slack.com/apps" target="_blank">
+                <a
+                  className="text-scale-900 pl-4"
+                  href="https://api.slack.com/apps"
+                  target="_blank"
+                >
                   Create new credentials
                 </a>
               )
@@ -736,7 +934,7 @@ const Settings = () => {
             addOns={
               externalProvidersModel.EXTERNAL_SPOTIFY_ENABLED && (
                 <a
-                  className="pl-4 text-gray-400"
+                  className="text-scale-900 pl-4"
                   href="https://developer.spotify.com/dashboard/"
                   target="_blank"
                 >
@@ -754,6 +952,69 @@ const Settings = () => {
               />
               <SecretField
                 name="EXTERNAL_SPOTIFY_SECRET"
+                showInlineError
+                errorMessage="Please enter the secret."
+              />
+            </>
+          )}
+          <Divider light />
+          <ToggleField
+            name="EXTERNAL_WORKOS_ENABLED"
+            addOns={
+              externalProvidersModel.EXTERNAL_WORKOS_ENABLED && (
+                <a
+                  className="text-scale-900 pl-4"
+                  href="https://dashboard.workos.com"
+                  target="_blank"
+                >
+                  Create new credentials
+                </a>
+              )
+            }
+          />
+          {externalProvidersModel.EXTERNAL_WORKOS_ENABLED && (
+            <>
+              <AutoField
+                name="EXTERNAL_WORKOS_CLIENT_ID"
+                showInlineError
+                errorMessage="Please enter the client id."
+              />
+              <SecretField
+                name="EXTERNAL_WORKOS_SECRET"
+                showInlineError
+                errorMessage="Please enter the secret."
+              />
+              <AutoField
+                name="EXTERNAL_WORKOS_URL"
+                showInlineError
+                errorMessage="Please enter the WorkOS url."
+              />
+            </>
+          )}
+          <Divider light />
+          <ToggleField
+            name="EXTERNAL_ZOOM_ENABLED"
+            addOns={
+              externalProvidersModel.EXTERNAL_ZOOM_ENABLED && (
+                <a
+                  className="text-scale-900 pl-4"
+                  href="https://developers.zoom.us/"
+                  target="_blank"
+                >
+                  Create new credentials
+                </a>
+              )
+            }
+          />
+          {externalProvidersModel.EXTERNAL_ZOOM_ENABLED && (
+            <>
+              <AutoField
+                name="EXTERNAL_ZOOM_CLIENT_ID"
+                showInlineError
+                errorMessage="Please enter the client id."
+              />
+              <SecretField
+                name="EXTERNAL_ZOOM_SECRET"
                 showInlineError
                 errorMessage="Please enter the secret."
               />
@@ -809,13 +1070,13 @@ const AuditLog = ({ interval, projectRef }: any) => {
   return (
     <Panel
       title={
-        <div className=" w-full flex items-center justify-between">
-          <Typography.Title level={5} className="flex-1 block">
+        <div className=" flex w-full items-center justify-between">
+          <Typography.Title level={5} className="block flex-1">
             Audit Trail
           </Typography.Title>
           <div className="flex-1 text-right">
             <Button
-              type="outline"
+              type="default"
               className="hover:border-gray-400"
               disabled={isLoading}
               loading={isLoading}

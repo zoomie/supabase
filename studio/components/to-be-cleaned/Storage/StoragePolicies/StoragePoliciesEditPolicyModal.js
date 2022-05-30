@@ -1,9 +1,8 @@
 import { Modal, Typography, IconChevronLeft } from '@supabase/ui'
 import { pull } from 'lodash'
 import { useState, useEffect } from 'react'
-import toast from 'react-hot-toast'
 
-import { POLICY_MODAL_VIEWS } from 'lib/constants'
+import { useStore } from 'hooks'
 import { STORAGE_POLICY_TEMPLATES } from './StoragePolicies.constants'
 import {
   createPayloadsForAddPolicy,
@@ -11,13 +10,17 @@ import {
   applyBucketIdToTemplateDefinition,
 } from '../Storage.utils'
 
-import PolicySelection from 'components/to-be-cleaned/Auth/PolicySelection'
-import PolicyTemplates from 'components/to-be-cleaned/Auth/PolicyTemplates'
+import {
+  PolicySelection,
+  PolicyTemplates,
+  POLICY_MODAL_VIEWS,
+} from 'components/interfaces/Authentication/Policies'
 import StoragePoliciesEditor from './StoragePoliciesEditor'
 import StoragePoliciesReview from './StoragePoliciesReview'
 
 const newPolicyTemplate = {
   name: '',
+  roles: [],
   policyIds: [],
   definition: '',
   allowedOperations: [],
@@ -26,10 +29,12 @@ const newPolicyTemplate = {
 const StoragePoliciesEditPolicyModal = ({
   visible = false,
   bucketName = '',
+  roles = [],
   onSelectCancel = () => {},
   onCreatePolicies = () => {},
   onSaveSuccess = () => {},
 }) => {
+  const { ui } = useStore()
   const [previousView, setPreviousView] = useState('') // Mainly to decide which view to show when back from templates
   const [view, setView] = useState('')
 
@@ -100,18 +105,32 @@ const StoragePoliciesEditPolicyModal = ({
     })
   }
 
+  const onUpdatePolicyRoles = (roles) => {
+    setPolicyFormFields({
+      ...policyFormFields,
+      roles,
+    })
+  }
+
   const validatePolicyEditorFormFields = () => {
     const { name, definition, allowedOperations } = policyFormFields
     if (name.length === 0) {
-      return toast('Do give your policy a name')
+      return ui.setNotification({ category: 'info', message: 'Do give your policy a name' })
     }
     if (definition.length === 0) {
       // Will need to figure out how to strip away comments or something
-      return toast('Did you forget to provide a definition for your policy?')
+      return ui.setNotification({
+        category: 'info',
+        message: 'Did you forget to provide a definition for your policy?',
+      })
     }
     if (allowedOperations.length === 0) {
-      return toast('You will need to allow at least one operation in your policy')
+      return ui.setNotification({
+        category: 'info',
+        message: 'You will need to allow at least one operation in your policy',
+      })
     }
+
     const policySQLStatements = createSQLPolicies(bucketName, policyFormFields)
     setPolicyStatementsForReview(policySQLStatements)
     onReviewPolicy()
@@ -134,51 +153,61 @@ const StoragePoliciesEditPolicyModal = ({
   }
 
   /* Misc components */
-  const StoragePolicyTemplatesTitle = () => (
-    <div className="px-6 pt-5">
-      <div className="flex items-center space-x-3">
-        <Typography.Text type="secondary">
-          <div className="cursor-pointer" onClick={onSelectBackFromTemplates}>
-            <IconChevronLeft />
+
+  const StoragePolicyEditorModalTitle = ({
+    view,
+    bucketName,
+    onSelectBackFromTemplates = () => {},
+  }) => {
+    const getTitle = () => {
+      if (view === POLICY_MODAL_VIEWS.EDITOR || view === POLICY_MODAL_VIEWS.SELECTION) {
+        return `Adding new policy to ${bucketName}`
+      }
+      if (view === POLICY_MODAL_VIEWS.REVIEW) {
+        return `Reviewing policies to be created for ${bucketName}`
+      }
+    }
+    if (view === POLICY_MODAL_VIEWS.TEMPLATES) {
+      return (
+        <div className="">
+          <div className="flex items-center space-x-3">
+            <span
+              onClick={onSelectBackFromTemplates}
+              className="text-scale-900 hover:text-scale-1200 cursor-pointer transition-colors"
+            >
+              <IconChevronLeft strokeWidth={2} size={14} />
+            </span>
+            <Typography.Title level={4} className="m-0">
+              Select a template to use for your new policy
+            </Typography.Title>
           </div>
-        </Typography.Text>
+        </div>
+      )
+    }
+    return (
+      <div className="flex items-center space-x-3">
         <Typography.Title level={4} className="m-0">
-          Select a template to use for your new policy
+          {getTitle()}
         </Typography.Title>
       </div>
-    </div>
-  )
-
-  const StoragePolicyReviewTitle = ({ bucketName = '' }) => (
-    <div className="flex items-center space-x-3 px-6 pt-5">
-      <Typography.Title level={4} className="m-0">
-        Reviewing policies to be added for {bucketName}
-      </Typography.Title>
-    </div>
-  )
-
-  const StoragePolicyTitle = ({ bucketName = '' }) => (
-    <div className="flex items-center space-x-3 px-6 pt-5">
-      <Typography.Title level={4} className="m-0">
-        Adding new policy to ${bucketName}
-      </Typography.Title>
-    </div>
-  )
+    )
+  }
 
   return (
     <Modal
+      size={view === POLICY_MODAL_VIEWS.SELECTION ? 'medium' : 'xxlarge'}
       closable
       hideFooter
       visible={visible}
       contentStyle={{ padding: 0 }}
-      title={
-        view === POLICY_MODAL_VIEWS.TEMPLATES
-          ? [<StoragePolicyTemplatesTitle key="0" />]
-          : view === POLICY_MODAL_VIEWS.REVIEW
-          ? [<StoragePolicyReviewTitle key="1" bucketName={bucketName} />]
-          : [<StoragePolicyTitle key="2" bucketName={bucketName} />]
-      }
-      style={{ maxWidth: 'none', width: '60rem' }}
+      header={[
+        <StoragePolicyEditorModalTitle
+          key="0"
+          view={view}
+          bucketName={bucketName}
+          onSelectBackFromTemplates={onSelectBackFromTemplates}
+        />,
+      ]}
       onCancel={onSelectCancel}
     >
       <div className="w-full">
@@ -190,11 +219,13 @@ const StoragePoliciesEditPolicyModal = ({
           />
         ) : view === POLICY_MODAL_VIEWS.EDITOR ? (
           <StoragePoliciesEditor
+            roles={roles}
             policyFormFields={policyFormFields}
             onViewTemplates={onViewTemplates}
             onUpdatePolicyName={onUpdatePolicyName}
             onUpdatePolicyDefinition={onUpdatePolicyDefinition}
             onToggleOperation={onToggleOperation}
+            onUpdatePolicyRoles={onUpdatePolicyRoles}
             onReviewPolicy={validatePolicyEditorFormFields}
           />
         ) : view === POLICY_MODAL_VIEWS.TEMPLATES ? (

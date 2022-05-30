@@ -26,7 +26,7 @@ const Extensions: FC<Props> = ({}) => {
       <div className="mb-4">
         <div className="flex">
           <Input
-            size="tiny"
+            size="small"
             placeholder={'Filter'}
             value={filterString}
             onChange={(e) => setFilterString(e.target.value)}
@@ -37,8 +37,8 @@ const Extensions: FC<Props> = ({}) => {
 
       <div className="w-full my-8 space-y-12">
         {enabledExtensions.length > 0 && (
-          <div>
-            <Typography.Title level={4}>Enabled</Typography.Title>
+          <div className="space-y-4">
+            <h4 className="text-lg">Enabled</h4>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 mb-4">
               {enabledExtensions.map((extension) => (
                 <ExtensionCard key={extension.name} extension={extension} />
@@ -48,8 +48,8 @@ const Extensions: FC<Props> = ({}) => {
         )}
 
         {disabledExtensions.length > 0 && (
-          <div>
-            <Typography.Title level={4}>Extensions</Typography.Title>
+          <div className="space-y-4">
+            <h4 className="text-lg">Extensions</h4>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3 mb-4">
               {disabledExtensions.map((extension) => (
                 <ExtensionCard key={extension.name} extension={extension} />

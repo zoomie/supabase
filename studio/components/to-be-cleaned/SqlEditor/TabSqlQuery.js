@@ -14,11 +14,10 @@ import {
 } from '@supabase/ui'
 import Editor from '@monaco-editor/react'
 
-import { timeout } from 'lib/helpers'
+import { copyToClipboard, timeout } from 'lib/helpers'
 import { IS_PLATFORM } from 'lib/constants'
 import { useSqlStore, UTILITY_TAB_TYPES } from 'localStores/sqlEditor/SqlEditorStore'
 import { useProjectContentStore } from 'stores/projectContentStore'
-import toast from 'react-hot-toast'
 
 import { SQL_SNIPPET_SCHEMA_VERSION } from './SqlEditor.constants'
 
@@ -241,10 +240,11 @@ const ResultsDropdown = observer(() => {
 
   function onCopyAsMarkdown() {
     if (navigator) {
-      navigator.clipboard.writeText(sqlEditorStore.activeTab.markdownData)
+      copyToClipboard(sqlEditorStore.activeTab.markdownData, () => {
+        ui.setNotification({ category: 'success', message: 'Copied results to clipboard' })
+        Telemetry.sendEvent('sql_editor', 'sql_copy_as_markdown', '')
+      })
     }
-    ui.setNotification({ category: 'success', message: 'Copied results to clipboard' })
-    Telemetry.sendEvent('sql_editor', 'sql_copy_as_markdown', '')
   }
 
   return (
@@ -327,7 +327,7 @@ const SizeToggleButton = observer(() => {
           size="tiny"
           shadow={false}
           onClick={maximizeEditor}
-          icon={<IconChevronDown className="text-gray-400" size="tiny" strokeWidth={2} />}
+          icon={<IconChevronDown className="text-gray-1100" size="tiny" strokeWidth={2} />}
           tooltip={{
             title: 'Maximize editor',
             position: 'top',
@@ -340,7 +340,7 @@ const SizeToggleButton = observer(() => {
           size="tiny"
           shadow={false}
           onClick={restorePanelSize}
-          icon={<IconChevronUp className="text-gray-400" size="tiny" strokeWidth={2} />}
+          icon={<IconChevronUp className="text-gray-1100" size="tiny" strokeWidth={2} />}
           tooltip={{
             title: 'Restore panel size',
             position: 'top',
@@ -401,8 +401,11 @@ const FavoriteButton = observer(() => {
       sqlEditorStore.selectTab(id)
       setLoading(false)
     } catch (error) {
-      toast.error(error.message)
-      console.error(error)
+      ui.setNotification({
+        error,
+        category: 'error',
+        message: `Failed to add to favourites: ${error.message}`,
+      })
       setLoading(false)
     }
   }
@@ -435,8 +438,11 @@ const FavoriteButton = observer(() => {
       sqlEditorStore.selectTab(id)
       setLoading(false)
     } catch (error) {
-      toast.error(error.message)
-      console.error(error)
+      ui.setNotification({
+        error,
+        category: 'error',
+        message: `Failed to remove from favourites: ${error.message}`,
+      })
       setLoading(false)
     }
   }
@@ -473,9 +479,7 @@ const UtilityTabResults = observer(() => {
   if (sqlEditorStore.activeTab.isExecuting) {
     return (
       <div className="bg-table-header-light dark:bg-table-header-dark">
-        <Typography.Text>
-          <p className="px-6 py-4 m-0 border-0 font-mono">Running...</p>
-        </Typography.Text>
+        <p className="px-6 py-4 m-0 border-0 font-mono text-sm">Running...</p>
       </div>
     )
   } else if (sqlEditorStore.activeTab.errorResult) {
@@ -534,9 +538,7 @@ const Results = ({ results }) => {
   if (!results.length) {
     return (
       <div className="bg-table-header-light dark:bg-table-header-dark">
-        <Typography.Text>
-          <p className="px-6 py-4 m-0 font-mono border-0">Success. No rows returned</p>
-        </Typography.Text>
+        <p className="px-6 py-4 m-0 font-mono border-0 text-sm">Success. No rows returned</p>
       </div>
     )
   }
@@ -561,12 +563,12 @@ const Results = ({ results }) => {
   }
 
   function onCopyCell() {
-    if (cellPosition) {
+    if (columns && cellPosition) {
       const { idx, rowIdx } = cellPosition
       const colKey = columns[idx].key
       const cellValue = results[rowIdx]?.[colKey] ?? ''
       const value = formatClipboardValue(cellValue)
-      navigator.clipboard.writeText(value)
+      copyToClipboard(value)
     }
   }
 

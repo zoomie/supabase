@@ -1,11 +1,11 @@
 import useSWR, { mutate } from 'swr'
 import { useRouter } from 'next/router'
-import { Typography } from '@supabase/ui'
+import { Button, Dropdown, IconKey, Typography } from '@supabase/ui'
 import { FC, createContext, useContext, useEffect, useState } from 'react'
 import { observer, useLocalObservable } from 'mobx-react-lite'
 
-import { API_URL } from 'lib/constants'
-import { useStore, withAuth } from 'hooks'
+import { API_URL, IS_PLATFORM } from 'lib/constants'
+import { useStore } from 'hooks'
 import { get } from 'lib/common/fetch'
 import { snakeToCamel } from 'lib/helpers'
 import { DocsLayout } from 'components/layouts'
@@ -18,10 +18,11 @@ import TablesIntroduction from 'components/to-be-cleaned/Docs/Pages/Tables/Intro
 import UserManagement from 'components/to-be-cleaned/Docs/Pages/UserManagement'
 import RpcIntroduction from 'components/to-be-cleaned/Docs/Pages/Rpc/Introduction'
 import Description from 'components/to-be-cleaned/Docs/Description'
+import { NextPageWithLayout } from 'types'
 
 const PageContext = createContext(null)
 
-const PageConfig = () => {
+const PageConfig: NextPageWithLayout = () => {
   const PageState: any = useLocalObservable(() => ({
     projectRef: '',
     jsonSchema: {},
@@ -34,7 +35,7 @@ const PageConfig = () => {
       let rpcs: any = {}
 
       Object.entries(paths || []).forEach(([name, val]) => {
-        let trimmed = name.substr(1)
+        let trimmed = name.slice(1)
         let id = trimmed.replace(functionPath, '')
         let displayName = id.replace(/_/g, ' ')
         let camelCase = snakeToCamel(id)
@@ -59,30 +60,33 @@ const PageConfig = () => {
 
   return (
     <PageContext.Provider value={PageState}>
-      <DocsLayout title="API">
-        <DocView project={project} />
-      </DocsLayout>
+      <DocView project={project} />
     </PageContext.Provider>
   )
 }
-export default withAuth(observer(PageConfig))
+
+PageConfig.getLayout = (page) => <DocsLayout title="API">{page}</DocsLayout>
+
+export default observer(PageConfig)
+
+const DEFAULT_KEY = { name: 'hide', key: 'SUPABASE_KEY' }
 
 const DocView: FC<any> = observer(({}) => {
   const PageState: any = useContext(PageContext)
   const router = useRouter()
   const [selectedLang, setSelectedLang] = useState<any>('js')
-  const [showApiKey, setShowApiKey] = useState<any>('')
+  const [showApiKey, setShowApiKey] = useState<any>(DEFAULT_KEY)
 
   const { data, error }: any = useSWR(`${API_URL}/props/project/${PageState.projectRef}/api`, get)
   const API_KEY = data?.autoApiService?.internalApiKey
   const swaggerUrl = data?.autoApiService?.restUrl
   const headers: any = { apikey: API_KEY }
 
-  if (API_KEY?.length > 40) headers['authorization'] = `Bearer ${API_KEY}`
+  if (API_KEY?.length > 40) headers['Authorization'] = `Bearer ${API_KEY}`
 
   const { data: jsonSchema, error: jsonSchemaError } = useSWR(
     () => swaggerUrl,
-    (url) => get(url, { headers, credentials: 'omit' }).then((res) => res)
+    (url: string) => get(url, { headers, credentials: 'omit' }).then((res) => res)
   )
 
   useEffect(() => {
@@ -97,7 +101,7 @@ const DocView: FC<any> = observer(({}) => {
 
   if (error || jsonSchemaError)
     return (
-      <div className="p-6 mx-auto sm:w-full md:w-3/4 text-center">
+      <div className="mx-auto p-6 text-center sm:w-full md:w-3/4">
         <Typography.Text type="danger">
           <p>Error connecting to API</p>
           <p>{`${error || jsonSchemaError}`}</p>
@@ -106,13 +110,19 @@ const DocView: FC<any> = observer(({}) => {
     )
   if (!data || !jsonSchema || !PageState.jsonSchema)
     return (
-      <div className="p-6 mx-auto sm:w-full md:w-3/4 text-center">
+      <div className="mx-auto p-6 text-center sm:w-full md:w-3/4">
         <Typography.Title level={3}>Building docs ...</Typography.Title>
       </div>
     )
 
   // Data Loaded
-  const { autoApiService } = data
+  const autoApiService = {
+    ...data.autoApiService,
+    endpoint: IS_PLATFORM
+      ? `https://${data?.autoApiService?.endpoint}`
+      : data.autoApiService.endpoint,
+  }
+
   const { query } = router
   const { page, resource, rpc } = query
   const { paths, definitions } = PageState.jsonSchema
@@ -122,18 +132,17 @@ const DocView: FC<any> = observer(({}) => {
   return (
     <div className="Docs h-full w-full overflow-y-auto" key={PAGE_KEY}>
       <div className="Docs--inner-wrapper">
-        <div className="sticky top-0 w-full flex flex-row-reverse z-40 ">
-          <div
-            className="border-b border-gray-500 dark:border-gray-500 bg-gray-700"
-            style={{ width: '50%' }}
-          >
+        <div className="sticky top-0 z-40 flex w-full flex-row-reverse ">
+          <div className="bg-scale-100 dark:bg-scale-300" style={{ width: '50%' }}>
             <div className="z-0 flex ">
               <button
                 type="button"
                 onClick={() => setSelectedLang('js')}
                 className={`${
-                  selectedLang == 'js' ? 'text-gray-300' : 'text-gray-400'
-                } relative inline-flex items-center p-1 px-2 bg-gray-600 border-r border-gray-500 dark:border-gray-500 text-sm font-medium hover:text-gray-300 focus:z-10 focus:outline-none focus:border-blue-300 focus:ring-blue active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150`}
+                  selectedLang == 'js'
+                    ? 'text-scale-1200 bg-scale-300 dark:bg-scale-200 font-medium'
+                    : 'text-scale-900 bg-scale-100 dark:bg-scale-100'
+                } border-scale-200 hover:text-scale-1200 relative inline-flex items-center border-r p-1 px-2 text-sm transition focus:outline-none`}
               >
                 JavaScript
               </button>
@@ -141,23 +150,53 @@ const DocView: FC<any> = observer(({}) => {
                 type="button"
                 onClick={() => setSelectedLang('bash')}
                 className={`${
-                  selectedLang == 'bash' ? 'text-gray-300' : 'text-gray-400'
-                } relative inline-flex items-center p-1 px-2 bg-gray-600 border-r border-gray-500 dark:border-gray-500 text-sm font-medium hover:text-gray-300 focus:z-10 focus:outline-none focus:border-blue-300 focus:ring-blue active:bg-gray-100 active:text-gray-700 transition ease-in-out duration-150`}
+                  selectedLang == 'bash'
+                    ? 'text-scale-1200 bg-scale-300 dark:bg-scale-200 font-medium'
+                    : 'text-scale-900 bg-scale-100 dark:bg-scale-100'
+                } border-scale-200 hover:text-scale-1200 relative inline-flex items-center border-r p-1 px-2 text-sm transition focus:outline-none`}
               >
                 Bash
               </button>
               {selectedLang == 'bash' && (
                 <div className="flex">
-                  <span className="text-sm text-gray-300 p-1 pl-2">Key:</span>
-                  <select
-                    className="text-sm text-gray-300 border-none cursor-pointer p-0 pl-2 pr-8"
-                    value={showApiKey}
-                    onChange={(e) => setShowApiKey(e.target.value)}
+                  <div className="text-scale-900 flex items-center gap-2 p-1 pl-2 text-xs">
+                    <IconKey size={12} strokeWidth={1.5} />
+                    <span>Project API key :</span>
+                  </div>
+                  <Dropdown
+                    align="end"
+                    side="bottom"
+                    className="text-scale-900 cursor-pointer border-none bg-transparent p-0 pl-2 pr-8 text-sm"
+                    overlay={
+                      <>
+                        <Dropdown.Item onClick={() => setShowApiKey(DEFAULT_KEY)}>
+                          hide
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          onClick={() =>
+                            setShowApiKey({
+                              key: autoApiService?.defaultApiKey,
+                              name: 'anon (public)',
+                            })
+                          }
+                        >
+                          anon (public)
+                        </Dropdown.Item>
+                        <Dropdown.Item
+                          onClick={() =>
+                            setShowApiKey({
+                              key: autoApiService?.serviceApiKey,
+                              name: 'service_role (secret)',
+                            })
+                          }
+                        >
+                          service_role (secret)
+                        </Dropdown.Item>
+                      </>
+                    }
                   >
-                    <option value="">Hide</option>
-                    <option value={autoApiService?.defaultApiKey}>{'anon key'}</option>
-                    <option value={autoApiService?.serviceApiKey}>{'service key'}</option>
-                  </select>
+                    <Button type="default">{showApiKey.name}</Button>
+                  </Dropdown>
                 </div>
               )}
             </div>
@@ -172,7 +211,7 @@ const DocView: FC<any> = observer(({}) => {
               resources={PageState.resources}
               definitions={definitions}
               paths={paths}
-              showApiKey={showApiKey}
+              showApiKey={showApiKey.key}
               refreshDocs={refreshDocs}
             />
           ) : rpc ? (
@@ -182,14 +221,14 @@ const DocView: FC<any> = observer(({}) => {
               rpcId={rpc}
               paths={paths}
               rpcs={PageState.rpcs}
-              showApiKey={showApiKey}
+              showApiKey={showApiKey.key}
               refreshDocs={refreshDocs}
             />
           ) : (
             <GeneralContent
               autoApiService={autoApiService}
               selectedLang={selectedLang}
-              showApiKey={showApiKey}
+              showApiKey={showApiKey.key}
               page={page}
             />
           )}
@@ -257,8 +296,8 @@ const RpcContent = ({
   const paramList = rpcParams.map((x) => x.type).join(', ')
   return (
     <>
-      <h2 className="text-white mt-0">
-        <code className="text-lg px-4 py-2">{meta.id}</code>
+      <h2 className="text-scale-1200 mt-0">
+        <span className="px-6 text-2xl">{meta.id}</span>
       </h2>
 
       <div className="doc-section">
@@ -285,7 +324,7 @@ const RpcContent = ({
       </div>
       {rpcParams.length > 0 && (
         <div>
-          <h2 className="text-white capitalize mt-0">Function Arguments</h2>
+          <h3 className="text-scale-1200 mt-0 px-6 capitalize">Function Arguments</h3>
           {rpcParams.map((x) => {
             return (
               <div className="doc-section">
@@ -335,8 +374,8 @@ const ResourceContent = ({
 
   return (
     <>
-      <h2 className="text-white mt-0">
-        <code className="text-lg px-4 py-2">{resourceId}</code>
+      <h2 className="text-scale-1200mt-0">
+        <span className="px-6 py-2 text-2xl">{resourceId}</span>
       </h2>
 
       <div className="doc-section">
@@ -351,10 +390,10 @@ const ResourceContent = ({
       </div>
       {properties.length > 0 && (
         <div>
-          <h2 className="text-white capitalize mt-0">Fields</h2>
+          {/* <h2 className="text-white capitalize mt-0 px-6">Fields</h2> */}
           {properties.map((x) => (
-            <div className="doc-section" key={x.id}>
-              <article className="text ">
+            <div className="doc-section py-4" key={x.id}>
+              <article className="text">
                 <Param
                   key={x.id}
                   name={x.id}
@@ -387,7 +426,7 @@ const ResourceContent = ({
       )}
       {methods.includes('GET') && (
         <>
-          <h2 className="text-white mt-0">Read rows</h2>
+          <h3 className="text-scale-1200 mt-4 px-6">Read rows</h3>
           <div className="doc-section">
             <article className="text ">
               <p>
@@ -424,7 +463,7 @@ const ResourceContent = ({
           </div>
           <div className="doc-section">
             <article className="text ">
-              <h4 className="text-white mt-0">Filtering</h4>
+              <h4 className="mt-0 text-white">Filtering</h4>
               <p>Supabase provides a wide range of filters.</p>
               <p>
                 <a href="https://supabase.com/docs/client/using-filters" target="_blank">
@@ -443,7 +482,7 @@ const ResourceContent = ({
       )}
       {methods.includes('POST') && (
         <>
-          <h2 className="text-white mt-0">Insert rows</h2>
+          <h3 className="text-scale-1200 mt-4 px-6">Insert rows</h3>
           <div className="doc-section">
             <article className="text ">
               <p>
@@ -478,7 +517,7 @@ const ResourceContent = ({
       )}
       {methods.includes('PATCH') && (
         <>
-          <h2 className="text-white mt-0">Update rows</h2>
+          <h3 className="text-scale-1200 mt-4 px-6">Update rows</h3>
           <div className="doc-section">
             <article className="text ">
               <p>
@@ -506,7 +545,7 @@ const ResourceContent = ({
       )}
       {methods.includes('DELETE') && (
         <>
-          <h2 className="text-white mt-0">Delete rows</h2>
+          <h3 className="text-scale-1200 mt-4 px-6">Delete rows</h3>
           <div className="doc-section">
             <article className="text ">
               <p>
@@ -529,14 +568,13 @@ const ResourceContent = ({
         </>
       )}
       <>
-        <h2 className="text-white mt-0">Subscribe to changes</h2>
+        <h3 className="text-scale-1200 mt-4 px-6">Subscribe to changes</h3>
         <div className="doc-section">
           <article className="text ">
             <p>
-              Supabase provides realtime functionality. Right now we recommend only using this on a
-              server-side application (see our notes in the Authentication section).
+              Supabase provides realtime functionality and broadcasts database changes to authorized
+              users depending on Row Level Security (RLS) policies.
             </p>
-            <p>We are building advanced auth so that you can use realtime streams from anywhere.</p>
             <p>
               <a href="https://supabase.com/docs/client/subscribe" target="_blank">
                 Learn more.
@@ -573,8 +611,8 @@ const ResourceContent = ({
         </div>
       </>
       <>
-        <h2 className="text-white mt-0">Much more</h2>
-        <div className="doc-section">
+        <h3 className="text-scale-1200 mt-4 px-6">Much more</h3>
+        <div className="doc-section py-4">
           <article className="text ">
             <p>
               These docs are a work in progress! See our{' '}

@@ -1,9 +1,7 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
-import { Claims } from '@auth0/nextjs-auth0'
 import { readOnly } from './supabaseClient'
 import { SupaResponse, User } from 'types'
-import { auth0 } from './auth0'
-import { flattenNamespaceOnUser } from './apiHelpers'
+import { getAuth0Id, getAuthUser, getIdentity } from 'lib/gotrue'
 
 /**
  * Use this method on api routes to check if user is authenticated and having required permissions.
@@ -30,10 +28,6 @@ export async function apiAuthenticate(
 
   const { slug: orgSlug, ref: projectRef } = req.query
   try {
-    // Check that they are logged in
-    // If no error throw from getAccessToken. That's good, we can continue
-    await auth0.getAccessToken(req, res)
-
     const user = await fetchUser(req, res)
     if (!user) {
       return { error: new Error('The user does not exist') } as unknown as SupaResponse<User>
@@ -53,15 +47,29 @@ export async function apiAuthenticate(
  *  user with only id prop or detail object. It depends on requireUserDetail config
  */
 async function fetchUser(req: NextApiRequest, res: NextApiResponse): Promise<any> {
-  const session = auth0.getSession(req, res)
+  let user_id_supabase = null
+  let user_id_auth0 = null
+  let gotrue_id = null
+  let email = null
 
-  if (!session) {
-    return null
+  const token = req.headers.authorization
+  if (!token) {
+    throw new Error('missing access token')
   }
+  let { user: gotrue_user, error: authError } = await getAuthUser(token)
+  if (authError) {
+    throw authError
+  }
+  if (gotrue_user !== null) {
+    gotrue_id = gotrue_user?.id
+    email = gotrue_user.email
 
-  const { user: auth0_user } = session
-  const flattened = flattenNamespaceOnUser('https://supabase.io', auth0_user)
-  const { user_id_supabase, user_id_auth0, email } = flattened
+    let { identity, error } = getIdentity(gotrue_user)
+    if (error) throw error
+    if (identity?.provider !== undefined) {
+      user_id_auth0 = getAuth0Id(identity?.provider, identity?.id)
+    }
+  }
 
   if (user_id_supabase) {
     return {
@@ -70,20 +78,17 @@ async function fetchUser(req: NextApiRequest, res: NextApiResponse): Promise<any
     }
   }
 
-  const { data } = await readOnly
-    .from('users')
-    .select(
-      `
+  const query = readOnly.from('users').select(
+    `
       id, auth0_id, primary_email, username, first_name, last_name, mobile, is_alpha_user
     `
-    )
-    .eq('auth0_id', user_id_auth0)
-    .single()
+  )
 
+  const { data } = await query.eq('gotrue_id', gotrue_id).single()
   return data
 }
 
-async function checkMemberPermission(req: NextApiRequest, user: Claims) {
+async function checkMemberPermission(req: NextApiRequest, user: any) {
   const org = await getOrganization(req)
   if (!org) {
     throw new Error('User organization does not exist')

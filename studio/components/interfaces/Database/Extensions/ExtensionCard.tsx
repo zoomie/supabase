@@ -1,7 +1,6 @@
 import { FC, useState } from 'react'
 import { observer } from 'mobx-react-lite'
-import { toast } from 'react-hot-toast'
-import { Badge, Typography, Toggle } from '@supabase/ui'
+import { Badge, IconLoader, Toggle } from '@supabase/ui'
 
 import { useStore } from 'hooks'
 import { confirmAlert } from 'components/to-be-cleaned/ModalsDeprecated/ConfirmModal'
@@ -11,7 +10,7 @@ interface Props {
 }
 
 const ExtensionCard: FC<Props> = ({ extension }) => {
-  const { meta } = useStore()
+  const { ui, meta } = useStore()
 
   const isOn = extension.installed_version !== null
   const [loading, setLoading] = useState(false)
@@ -32,10 +31,16 @@ const ExtensionCard: FC<Props> = ({ extension }) => {
           if (response.error) {
             throw response.error
           } else {
-            toast.success(`${extension.name.toUpperCase()} is on.`)
+            ui.setNotification({
+              category: 'success',
+              message: `${extension.name.toUpperCase()} is on.`,
+            })
           }
         } catch (error: any) {
-          toast.error(`Toggle ${extension.name.toUpperCase()} failed: ${error.message}`)
+          ui.setNotification({
+            category: 'error',
+            message: `Failed to toggle ${extension.name.toUpperCase()}: ${error.message}`,
+          })
         } finally {
           setLoading(false)
         }
@@ -54,10 +59,16 @@ const ExtensionCard: FC<Props> = ({ extension }) => {
           if (response.error) {
             throw response.error
           } else {
-            toast(`${extension.name.toUpperCase()} is off.`)
+            ui.setNotification({
+              category: 'success',
+              message: `${extension.name.toUpperCase()} is off.`,
+            })
           }
         } catch (error: any) {
-          toast.error(`Toggle ${extension.name.toUpperCase()} failed: ${error.message}`)
+          ui.setNotification({
+            category: 'error',
+            message: `Toggle ${extension.name.toUpperCase()} failed: ${error.message}`,
+          })
         } finally {
           // Need to reload them because the delete function
           // removes the extension from the store
@@ -71,21 +82,25 @@ const ExtensionCard: FC<Props> = ({ extension }) => {
   return (
     <div
       className="
-        border border-border-secondary-light dark:border-border-secondary-dark
+        border-panel-border-light dark:border-panel-border-dark flex
+        flex-col
+        overflow-hidden
         rounded
-        flex flex-col"
+        border shadow-sm
+      "
     >
       <div
         className="
-          p-4 px-6 flex 
-          bg-panel-header-light dark:bg-panel-header-dark
-          border-b border-border-secondary-light dark:border-border-secondary-dark"
+          bg-panel-header-light dark:bg-panel-header-dark border-panel-border-light 
+          dark:border-panel-border-dark flex
+          border-b p-4 px-6
+        "
       >
-        <div className="m-0 h-5 uppercase flex-1">
-          <Typography.Title level={5}>{extension.name}</Typography.Title>
-        </div>
+        <h3 className="text-scale-1200 m-0 h-5 flex-1 truncate text-base uppercase">
+          {extension.name}
+        </h3>
         {loading ? (
-          <img className="loading-spinner" src="/img/spinner.gif"></img>
+          <IconLoader className="animate-spin" size={16} />
         ) : (
           <Toggle
             size="tiny"
@@ -98,20 +113,20 @@ const ExtensionCard: FC<Props> = ({ extension }) => {
         className="
         bg-panel-header-light dark:bg-panel-header-dark
           bg-panel-secondary-light dark:bg-panel-secondary-dark 
-          flex flex-col h-full"
+          flex h-full flex-col"
       >
         <div className="p-4 px-6">
-          <Typography.Text type="secondary">
-            <span className="flex-grow capitalize-first">{extension.comment}</span>
-          </Typography.Text>
+          <p className="text-scale-1100 text-sm">
+            <span className="flex-grow capitalize">{extension.comment}</span>
+          </p>
         </div>
         {isOn && extension.schema && (
           <div className="p-4 px-6">
-            <Typography.Text type="secondary" small>
-              <span className="flex-grow capitalize-first">
+            <p className="text-scale-1100 text-sm">
+              <span className="flex-grow">
                 Schema: <Badge>{`${extension.schema}`}</Badge>
               </span>
-            </Typography.Text>
+            </p>
           </div>
         )}
       </div>

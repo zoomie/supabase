@@ -2,7 +2,6 @@ import { createContext, useEffect, useContext, useState } from 'react'
 import { useRouter } from 'next/router'
 import { observer, useLocalObservable } from 'mobx-react-lite'
 import { toJS } from 'mobx'
-import toast from 'react-hot-toast'
 import { pluckJsonSchemaFields, pluckObjectFields, timeout } from 'lib/helpers'
 import { AutoField } from 'uniforms-bootstrap4'
 import { organizations } from 'stores/jsonSchema'
@@ -15,101 +14,111 @@ import {
   IconTrash,
   Alert,
   Input,
-  Divider,
   Dropdown,
   Modal,
   IconSearch,
-  IconAlertCircle,
+  Form,
 } from '@supabase/ui'
 
 import { API_URL } from 'lib/constants'
 import { useOrganizationDetail, useStore, withAuth } from 'hooks'
-import { post, delete_ } from 'lib/common/fetch'
-import AccountLayout from 'components/layouts/AccountLayout'
+import { post, delete_, patch } from 'lib/common/fetch'
+import { AccountLayoutWithoutAuth } from 'components/layouts'
 import { BillingSettings, InvoicesSettings } from 'components/interfaces/Organization'
 
 import Table from 'components/to-be-cleaned/Table'
 import Panel from 'components/to-be-cleaned/Panel'
 import { confirmAlert } from 'components/to-be-cleaned/ModalsDeprecated/ConfirmModal'
 import InviteMemberModal from 'components/to-be-cleaned/ModalsDeprecated/InviteMemberModal'
-import TextConfirmModal from 'components/to-be-cleaned/ModalsDeprecated/TextConfirmModal'
+import TextConfirmModal from 'components/ui/Modals/TextConfirmModal'
 import SchemaFormPanel from 'components/to-be-cleaned/forms/SchemaFormPanel'
-import { Project } from 'types'
+import { NextPageWithLayout, Project } from 'types'
 
 // [Joshen] Low prio refactor: Bring out general and team settings into their own components too
 
 const PageContext = createContext(null)
 
-const OrgSettings = () => {
-  const { app, ui } = useStore()
-  const PageState: any = useLocalObservable(() => ({
-    user: {} as any,
-    organization: {},
-    projects: [],
-    members: [],
-    products: [],
-    membersFilterString: '',
-    get isOrgOwner() {
-      return (
-        this.members.find((x: any) => x.profile.id === this.user?.id && x.is_owner) != undefined
-      )
-    },
-    get filteredMembers() {
-      const temp = this.members.filter((x: any) => {
-        let profile = x.profile
+const OrgSettingsLayout = withAuth(
+  observer(({ children }) => {
+    const { app, ui } = useStore()
+    const router = useRouter()
+    const PageState: any = useLocalObservable(() => ({
+      user: {} as any,
+      organization: {},
+      projects: [],
+      members: [],
+      products: [],
+      membersFilterString: '',
+      get isOrgOwner() {
         return (
-          profile.username.includes(this.membersFilterString) ||
-          profile.primary_email.includes(this.membersFilterString)
+          this.members.find((x: any) => x.profile.id === this.user?.id && x.is_owner) != undefined
         )
-      })
-      return temp.sort((a: any, b: any) => a.profile.username.localeCompare(b.profile.username))
-    },
-    initData(organization: any, user: any, projects: any) {
-      this.organization = organization
-      this.user = user
-      this.projects = projects
-    },
-    onOrgUpdated(updatedOrg: any) {
-      app.onOrgUpdated(updatedOrg)
-    },
-    onOrgDeleted() {
-      app.onOrgDeleted(this.organization)
-    },
-  }))
+      },
+      get filteredMembers() {
+        const temp = this.members.filter((x: any) => {
+          let profile = x.profile
+          return (
+            profile.username.includes(this.membersFilterString) ||
+            profile.primary_email.includes(this.membersFilterString)
+          )
+        })
+        return temp.sort((a: any, b: any) => a.profile.username.localeCompare(b.profile.username))
+      },
+      initData(organization: any, user: any, projects: any) {
+        this.organization = organization
+        this.user = user
+        this.projects = projects
+      },
+      onOrgUpdated(updatedOrg: any) {
+        app.onOrgUpdated(updatedOrg)
+      },
+      onOrgDeleted() {
+        app.onOrgDeleted(this.organization)
+      },
+    }))
 
-  useEffect(() => {
-    const organization = ui.selectedOrganization
-    const user = ui.profile
-    const projects = app.projects.list((x: Project) => x.organization_id == organization?.id)
-    PageState.initData(organization, user, projects)
-  }, [ui.selectedOrganization, ui.profile])
+    useEffect(() => {
+      // User added a new payment method
+      if (router.query.setup_intent && router.query.redirect_status) {
+        ui.setNotification({
+          category: 'success',
+          message: 'Successfully added new payment method',
+        })
+      }
+    }, [])
 
-  return (
-    <PageContext.Provider value={PageState}>
-      <PageLayout />
-    </PageContext.Provider>
-  )
+    useEffect(() => {
+      const organization = ui.selectedOrganization
+      const user = ui.profile
+      const projects = app.projects.list((x: Project) => x.organization_id == organization?.id)
+      PageState.initData(organization, user, projects)
+    }, [ui.selectedOrganization, ui.profile])
+
+    return (
+      <AccountLayoutWithoutAuth
+        title={PageState.organization?.name || 'Supabase'}
+        breadcrumbs={[
+          {
+            key: `org-settings`,
+            label: 'Settings',
+          },
+        ]}
+      >
+        <PageContext.Provider value={PageState}>{children}</PageContext.Provider>
+      </AccountLayoutWithoutAuth>
+    )
+  })
+)
+
+const OrgSettings: NextPageWithLayout = () => {
+  const { ui } = useStore()
+
+  return <>{ui.selectedOrganization && <OrganizationSettings />}</>
 }
-export default withAuth(observer(OrgSettings))
 
-const PageLayout = observer(() => {
-  const PageState: any = useContext(PageContext)
+OrgSettings.getLayout = (page) => <OrgSettingsLayout>{page}</OrgSettingsLayout>
 
-  return (
-    <AccountLayout
-      title={PageState.organization.name || 'Supabase'}
-      // @ts-ignore
-      breadcrumbs={[
-        {
-          key: `org-settings`,
-          label: 'Settings',
-        },
-      ]}
-    >
-      <OrganizationSettings />
-    </AccountLayout>
-  )
-})
+export default observer(OrgSettings)
 
 const OrganizationSettings = observer(() => {
   const PageState: any = useContext(PageContext)
@@ -127,6 +136,8 @@ const OrganizationSettings = observer(() => {
     }
   }, [members, products, isOrgDetailError])
 
+  if (!PageState.organization) return <div />
+
   return (
     <div className="p-4 pt-0">
       <TabsView />
@@ -135,16 +146,17 @@ const OrganizationSettings = observer(() => {
 })
 
 const TabsView = observer(() => {
-  const PageState: any = useContext(PageContext)
+  const { ui, app } = useStore()
   const [selectedTab, setSelectedTab] = useState('GENERAL')
+
+  const organization = ui.selectedOrganization
+  const projects = app.projects.list((x: Project) => x.organization_id == organization?.id)
 
   return (
     <>
       <div className="space-y-3">
         <section className="mt-4">
-          <Typography.Title level={3}>
-            {PageState.organization.name || 'Organization'} settings
-          </Typography.Title>
+          <h1 className="text-3xl">{organization?.name || 'Organization'} settings</h1>
         </section>
         <nav className="">
           <Tabs onChange={(id: any) => setSelectedTab(id)} type="underlined">
@@ -174,9 +186,9 @@ const TabsView = observer(() => {
         ) : selectedTab == 'TEAM' ? (
           <TeamSettings />
         ) : selectedTab == 'BILLING' ? (
-          <BillingSettings organization={PageState.organization} projects={PageState.projects} />
+          <BillingSettings organization={organization} projects={projects} />
         ) : selectedTab == 'INVOICES' ? (
-          <InvoicesSettings organization={PageState.organization} />
+          <InvoicesSettings organization={organization} />
         ) : null}
       </div>
     </>
@@ -185,34 +197,41 @@ const TabsView = observer(() => {
 
 const GeneralSettings = observer(() => {
   const PageState: any = useContext(PageContext)
+  const { ui } = useStore()
+
   const formModel = toJS(PageState.organization)
   // remove warning null value for controlled input
   if (!formModel.billing_email) formModel.billing_email = ''
   const BASIC_FIELDS = ['name', 'billing_email']
 
   const handleUpdateOrg = async (model: any) => {
-    const response = await post(
-      `${API_URL}/organizations/${PageState.organization.slug}/update`,
-      model
-    )
+    const response = await patch(`${API_URL}/organizations/${PageState.organization.slug}`, model)
     if (response.error) {
-      toast.error(`Update organization failed: ${response.error.message}`)
+      ui.setNotification({
+        category: 'error',
+        message: `Failed to update organization: ${response.error.message}`,
+      })
     } else {
       const updatedOrg = response
       PageState.onOrgUpdated(updatedOrg)
-      toast(`Settings saved`)
+      ui.setNotification({ category: 'success', message: 'Successfully saved settings' })
     }
   }
 
   return (
-    <article className="my-4 container max-w-4xl space-y-8">
+    <article className="container my-4 max-w-4xl space-y-8">
       <SchemaFormPanel
         title="General"
         schema={pluckJsonSchemaFields(organizations, BASIC_FIELDS)}
         model={formModel}
         onSubmit={(model: any) => handleUpdateOrg(pluckObjectFields(model, BASIC_FIELDS))}
       >
-        <AutoField name="name" showInlineError errorMessage="Please enter an organization name" />
+        <AutoField
+          className="auto-field"
+          name="name"
+          showInlineError
+          errorMessage="Please enter an organization name"
+        />
         <AutoField
           name="billing_email"
           showInlineError
@@ -242,15 +261,15 @@ const OrgDeletePanel = observer(() => {
           variant="danger"
           withIcon
           // @ts-ignore
-          title={[
-            <Typography.Text key="alert-title">
+          title={
+            <h5 className="text-red-900">
               Deleting this organization will also remove its projects
-            </Typography.Text>,
-          ]}
+            </h5>
+          }
         >
-          <Typography.Text className="block mb-4">
+          <p className="text-red-900">
             Make sure you have made a backup if you want to keep your data
-          </Typography.Text>
+          </p>
           <OrgDeleteModal />
         </Alert>
       </Panel.Content>
@@ -261,70 +280,108 @@ const OrgDeletePanel = observer(() => {
 const OrgDeleteModal = observer(() => {
   const PageState: any = useContext(PageContext)
   const router = useRouter()
+  const { ui } = useStore()
+
   const { slug: orgSlug, name: orgName } = PageState.organization
 
   const [isOpen, setIsOpen] = useState(false)
   const [value, setValue] = useState('')
-  const [loading, setLoading] = useState(false)
 
   function toggle() {
-    if (loading) return
     setIsOpen(!isOpen)
-  }
-
-  async function handleOrgDelete() {
-    setLoading(true)
-
-    const response = await delete_(`${API_URL}/organizations/${orgSlug}/remove`)
-    if (response.error) {
-      toast.error(`Delete organization failed: ${response.error.message}`)
-      setLoading(false)
-    } else {
-      PageState.onOrgDeleted(PageState.organization)
-      router.push('/')
-    }
   }
 
   return (
     <>
-      <Button onClick={toggle} danger>
-        Delete Organization
-      </Button>
+      <div className="mt-2">
+        <Button onClick={toggle} type="danger">
+          Delete organization
+        </Button>
+      </div>
       <Modal
         visible={isOpen}
         onCancel={toggle}
-        title="Are you absolutely sure?"
-        icon={<IconAlertCircle background="red" />}
+        header={
+          <div className="flex items-baseline gap-2">
+            <h5 className="text-scale-1200 text-sm">Delete organisation</h5>
+            <span className="text-scale-900 text-xs">Are you sure?</span>
+          </div>
+        }
+        size="small"
         hideFooter
-        size="medium"
         closable
       >
-        <Typography.Text>
-          <p className="text-sm">
-            This action <Typography.Text strong>cannot</Typography.Text> be undone. This will
-            permanently delete the <Typography.Text strong>{orgName}</Typography.Text> organization
-            and remove all of its projects.
-          </p>
-          <p className="text-sm">
-            Please type <Typography.Text strong>{orgSlug}</Typography.Text> to confirm.
-          </p>
-        </Typography.Text>
-        <Input
-          onChange={(e) => setValue(e.target.value)}
-          value={value}
-          placeholder="Type in the orgnaization name"
-          className="w-full"
-        />
-        <Button
-          onClick={handleOrgDelete}
-          disabled={orgSlug !== value || loading}
-          loading={loading}
-          size="small"
-          block
-          danger
+        <Form
+          initialValues={{
+            orgName: '',
+          }}
+          validateOnBlur
+          onSubmit={async (values: any, { setSubmitting }: any) => {
+            setSubmitting(true)
+            const response = await delete_(`${API_URL}/organizations/${orgSlug}`)
+            if (response.error) {
+              ui.setNotification({
+                category: 'error',
+                message: `Failed to delete organization: ${response.error.message}`,
+              })
+              setSubmitting(false)
+            } else {
+              PageState.onOrgDeleted(PageState.organization)
+              setSubmitting(false)
+              router.push('/')
+            }
+          }}
+          validate={(values) => {
+            const errors: any = {}
+            if (!values.orgName) {
+              errors.orgName = 'Enter the name of the organization.'
+            }
+            if (values.orgName !== orgSlug) {
+              errors.orgName = 'Value entered does not match name of the organization.'
+            }
+            return errors
+          }}
         >
-          I understand, delete this organization
-        </Button>
+          {({ isSubmitting }: { isSubmitting: boolean }) => (
+            <div className="space-y-4 py-3">
+              <Modal.Content>
+                <p className="text-scale-900 text-sm">
+                  This action <span className="text-scale-1200">cannot</span> be undone. This will
+                  permanently delete the <span className="text-scale-1200">{orgName}</span>{' '}
+                  organization and remove all of its projects.
+                </p>
+              </Modal.Content>
+              <Modal.Seperator />
+              <Modal.Content>
+                <Input
+                  id="orgName"
+                  label={
+                    <span>
+                      Please type <Typography.Text strong>{orgSlug}</Typography.Text> to confirm
+                    </span>
+                  }
+                  onChange={(e) => setValue(e.target.value)}
+                  value={value}
+                  placeholder="Type in the orgnaization name"
+                  className="w-full"
+                />
+              </Modal.Content>
+              <Modal.Seperator />
+              <Modal.Content>
+                <Button
+                  type="danger"
+                  htmlType="submit"
+                  loading={isSubmitting}
+                  size="small"
+                  block
+                  danger
+                >
+                  I understand, delete this organization
+                </Button>
+              </Modal.Content>
+            </div>
+          )}
+        </Form>
       </Modal>
     </>
   )
@@ -332,6 +389,7 @@ const OrgDeleteModal = observer(() => {
 
 const TeamSettings = observer(() => {
   const PageState: any = useContext(PageContext)
+  const { ui } = useStore()
   const [isLeaving, setIsLeaving] = useState(false)
 
   const orgSlug = PageState.organization.slug
@@ -352,7 +410,7 @@ const TeamSettings = observer(() => {
         },
       })
     } catch (error: any) {
-      toast.error(`Error leaving: ${error?.message}`)
+      ui.setNotification({ category: 'error', message: `Error leaving: ${error?.message}` })
     } finally {
       setIsLeaving(false)
     }
@@ -360,7 +418,7 @@ const TeamSettings = observer(() => {
 
   return (
     <>
-      <div className="my-4 container max-w-4xl space-y-8">
+      <div className="container my-4 max-w-4xl space-y-8">
         <div className="flex justify-between">
           <MembersFilterInput />
           {PageState.isOrgOwner ? (
@@ -372,14 +430,14 @@ const TeamSettings = observer(() => {
             </div>
           ) : (
             <div>
-              <Button type="secondary" onClick={() => leaveTeam()} loading={isLeaving}>
+              <Button type="default" onClick={() => leaveTeam()} loading={isLeaving}>
                 Leave team
               </Button>
             </div>
           )}
         </div>
       </div>
-      <div className="my-4 container max-w-4xl space-y-8">
+      <div className="container my-4 max-w-4xl space-y-8">
         <MembersView />
       </div>
     </>
@@ -396,7 +454,7 @@ const MembersFilterInput = observer(() => {
   return (
     <Input
       icon={<IconSearch size="tiny" />}
-      size="tiny"
+      size="small"
       value={PageState.membersFilterString}
       onChange={onFilterMemberChange}
       name="email"
@@ -427,7 +485,7 @@ const MembersView = observer(() => {
                       <img
                         src={`https://github.com/${x.profile.username}.png?size=80`}
                         width="40"
-                        className="rounded-full border border-border-secondary-light dark:border-border-secondary-dark"
+                        className="border-border-secondary-light dark:border-border-secondary-dark rounded-full border"
                       />
                     </div>
                     <div>
@@ -501,12 +559,15 @@ const OwnerDropdown = observer(({ members, member }: any) => {
           member_id: member.id,
         })
         if (response.error) {
-          toast.error(`Delete user failed: ${response.error.message}`)
+          ui.setNotification({
+            category: 'error',
+            message: `Failed to delete user: ${response.error.message}`,
+          })
           setLoading(false)
         } else {
           const updatedMembers = members.filter((x: any) => x.id !== member.id)
           mutateOrgMembers(updatedMembers)
-          toast(`Member removed`)
+          ui.setNotification({ category: 'success', message: 'Successfully removed member' })
         }
       },
     })
@@ -521,7 +582,10 @@ const OwnerDropdown = observer(({ members, member }: any) => {
       stripe_customer_id,
     })
     if (response.error) {
-      toast.error(`Transfer ownership failed: ${response.error.message}`)
+      ui.setNotification({
+        category: 'error',
+        message: `Failed to transfer ownership: ${response.error.message}`,
+      })
       setLoading(false)
     } else {
       const updatedMembers = [...members]
@@ -531,7 +595,7 @@ const OwnerDropdown = observer(({ members, member }: any) => {
       if (newOwner) newOwner.is_owner = true
       mutateOrgMembers(updatedMembers)
       setOwnerTransferIsVisble(false)
-      toast(`Organization transfered`)
+      ui.setNotification({ category: 'success', message: 'Successfully transfered organization' })
     }
   }
 
@@ -543,13 +607,13 @@ const OwnerDropdown = observer(({ members, member }: any) => {
         overlay={
           <>
             <Dropdown.Item onClick={() => setOwnerTransferIsVisble(!ownerTransferIsVisble)}>
-              Make owner
-              <Typography.Text type="secondary" small className="block mt-1">
-                Transfer ownership of "{orgName}"
-              </Typography.Text>
+              <div className="flex flex-col">
+                <p>Make owner</p>
+                <p className="block opacity-50">Transfer ownership of "{orgName}"</p>
+              </div>
             </Dropdown.Item>
-            <Divider light />
-            <Dropdown.Item onClick={handleMemberDelete} icon={<IconTrash size="tiny" />}>
+            <Dropdown.Seperator />
+            <Dropdown.Item icon={<IconTrash size="tiny" />} onClick={handleMemberDelete}>
               Remove member
             </Dropdown.Item>
           </>
@@ -577,7 +641,7 @@ const OwnerDropdown = observer(({ members, member }: any) => {
         text={
           <span>
             By transferring this organization, it will be solely owned by{' '}
-            <span className="dark:text-white font-medium">{member.profile.username}</span>, they
+            <span className="font-medium dark:text-white">{member.profile.username}</span>, they
             will also be able to remove you from the organization as a member
           </span>
         }

@@ -1,5 +1,6 @@
 <p align="center">
-  <img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/web/static/supabase-light-rounded-corner-background.svg"/>
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--light.svg?sanitize=true#gh-light-mode-only">
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--dark.svg?sanitize=true#gh-dark-mode-only">
 </p>
 
 ---
@@ -14,11 +15,13 @@
 - [x] Automatycznie generowany interfejs API
 - [x] Panel zarządzania
 - [x] Przechowywanie danych
-- [ ] Funkcje (dostępne w krótce)
+- [x] Funkcje
+
+![Supabase Dashboard](https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/github/supabase-dashboard.png)
 
 ## Dokumentacja
 
-Po pełną dokumentację, odwiedź [supabase.io/docs](https://supabase.com/docs)
+Po pełną dokumentację, odwiedź [supabase.com/docs](https://supabase.com/docs)
 
 ## Społeczność & Wsparcie
 
@@ -47,7 +50,7 @@ Supabase jest połączeniem narzędzi open source. Budujemy funkcjonalności Fir
 
 Supabase jest [hostowaną platformą](https://app.supabase.io). Możesz się zarejestrować i zacząć używać Supabase bez potrzeby instalacji dodatkowych narzędzi. Cały czas tworzymy lokalne środowisko deweloperskie - jest to teraz nasz priorytet, razem ze stabilnością platformy.
 
-![Architektura](https://supabase.com/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
+![Architektura](https://supabase.com/docs/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
 
 - [PostgreSQL](https://www.postgresql.org/) jest obiektowo-relacyjnym system baz danych z ponad 30 letnim aktywnym rozwojem dzięki któremu zyskał dobrą reputacje dzięki niezawodności, solidności funkcji i wydajności.
 - [Realtime](https://github.com/supabase/realtime) jest serwerem Elixir który umożliwia nasłuchiwanie na wsady PostgreSQL, aktualizacje, i usunięcia używając websocketów. Supabase nasłuchuje na budowane w Postgres' funkcje replikacji, konwertuje replikacje transmisji bitów do struktury JSON przez websockety.

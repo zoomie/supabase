@@ -1,5 +1,5 @@
 import { FC, useEffect, useRef } from 'react'
-import Editor, { useMonaco } from '@monaco-editor/react'
+import Editor from '@monaco-editor/react'
 
 import { timeout } from 'lib/helpers'
 import Connecting from '../Loading'
@@ -12,17 +12,18 @@ interface Props {
   isReadOnly?: boolean
   onInputChange: (value?: string) => void
   onInputRun?: (value: string) => void
+  hideLineNumbers?: boolean
 }
 
 const CodeEditor: FC<Props> = ({
   id,
   language,
   defaultValue,
-  isReadOnly,
+  isReadOnly = false,
+  hideLineNumbers = false,
   onInputChange = () => {},
   onInputRun = () => {},
 }) => {
-  const monaco = useMonaco()
   const editorRef = useRef()
 
   useEffect(() => {
@@ -68,6 +69,10 @@ const CodeEditor: FC<Props> = ({
         wordWrap: 'on',
         fixedOverflowWidgets: true,
         contextmenu: true,
+        lineNumbers: hideLineNumbers ? 'off' : undefined,
+        glyphMargin: hideLineNumbers ? false : undefined,
+        lineNumbersMinChars: hideLineNumbers ? 0 : undefined,
+        folding: hideLineNumbers ? false : undefined,
       }}
       onMount={onMount}
       onChange={onInputChange}

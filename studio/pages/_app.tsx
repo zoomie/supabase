@@ -7,47 +7,48 @@ import 'styles/toast.scss'
 import 'styles/code.scss'
 import 'styles/monaco.scss'
 import 'styles/contextMenu.scss'
+import 'styles/react-data-grid-logs.scss'
+import 'styles/date-picker.scss'
+
+import dayjs from 'dayjs'
+import customParseFormat from 'dayjs/plugin/customParseFormat'
+import timezone from 'dayjs/plugin/timezone'
+import utc from 'dayjs/plugin/utc'
 
 import Head from 'next/head'
-import dynamic from 'next/dynamic'
-import type { AppProps } from 'next/app'
-import { Toaster } from 'react-hot-toast'
+import { AppPropsWithLayout } from 'types'
+
+import { useRouter } from 'next/router'
+import { useEffect, useState } from 'react'
 import { RootStore } from 'stores'
 import { StoreProvider } from 'hooks'
+import { getParameterByName } from 'lib/common/fetch'
+import { GOTRUE_ERRORS } from 'lib/constants'
+
+import { PortalToast, GoTrueWrapper, RouteValidationWrapper } from 'components/interfaces/App'
 import PageTelemetry from 'components/ui/PageTelemetry'
 import FlagProvider from 'components/ui/Flag/FlagProvider'
-import { useState } from 'react'
 
-const PortalRootWithNoSSR = dynamic(
-  // @ts-ignore
-  () => import('@radix-ui/react-portal').then((portal) => portal.Root),
-  { ssr: false }
-)
+dayjs.extend(customParseFormat)
+dayjs.extend(timezone)
+dayjs.extend(utc)
 
-const PortalToast = () => (
-  // @ts-ignore
-  <PortalRootWithNoSSR className="portal--toast">
-    <Toaster
-      position="top-right"
-      toastOptions={{
-        className:
-          'bg-bg-primary-light dark:bg-bg-primary-dark text-typography-body-strong-light dark:text-typography-body-strong-dark border dark:border-dark',
-        style: {
-          padding: '8px',
-          paddingLeft: '16px',
-          paddingRight: '16px',
-          fontSize: '0.875rem',
-        },
-        error: {
-          duration: 8000,
-        },
-      }}
-    />
-  </PortalRootWithNoSSR>
-)
-
-function MyApp({ Component, pageProps }: AppProps) {
+function MyApp({ Component, pageProps }: AppPropsWithLayout) {
   const [rootStore] = useState(() => new RootStore())
+  const router = useRouter()
+
+  useEffect(() => {
+    const errorDescription = getParameterByName('error_description', router.asPath)
+    if (errorDescription === GOTRUE_ERRORS.UNVERIFIED_GITHUB_USER) {
+      rootStore.ui.setNotification({
+        category: 'error',
+        message:
+          'Please verify your email on GitHub first, then reach out to us at support@supabase.io to log into the dashboard',
+      })
+    }
+  }, [])
+
+  const getLayout = Component.getLayout ?? ((page) => page)
 
   return (
     <StoreProvider rootStore={rootStore}>
@@ -57,9 +58,13 @@ function MyApp({ Component, pageProps }: AppProps) {
           <meta name="viewport" content="initial-scale=1.0, width=device-width" />
           <link rel="stylesheet" type="text/css" href="/css/fonts.css" />
         </Head>
-        <PageTelemetry>
-          <Component {...pageProps} />
-        </PageTelemetry>
+        <GoTrueWrapper>
+          <PageTelemetry>
+            <RouteValidationWrapper>
+              {getLayout(<Component {...pageProps} />)}
+            </RouteValidationWrapper>
+          </PageTelemetry>
+        </GoTrueWrapper>
         <PortalToast />
       </FlagProvider>
     </StoreProvider>

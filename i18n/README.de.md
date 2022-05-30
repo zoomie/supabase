@@ -1,5 +1,6 @@
 <p align="center">
-  <img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/web/static/supabase-light-rounded-corner-background.svg"/>
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--light.svg?sanitize=true#gh-light-mode-only">
+<img width="300" src="https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/supabase-logo-wordmark--dark.svg?sanitize=true#gh-dark-mode-only">
 </p>
 
 ---
@@ -14,11 +15,13 @@
 - [x] Automatisch generierte APIs
 - [x] Dashboard
 - [x] Speicher
-- [ ] Funktionen (kommt demnächst)
+- [x] Funktionen
+
+![Supabase Dashboard](https://raw.githubusercontent.com/supabase/supabase/master/apps/www/public/images/github/supabase-dashboard.png)
 
 ## Dokumentation
 
-Um die gesamte Dokumentation einzusehen, schaue auf [supabase.io/docs](https://supabase.com/docs) vorbei.
+Um die gesamte Dokumentation einzusehen, schaue auf [supabase.com/docs](https://supabase.com/docs) vorbei.
 
 ## Community & Support
 
@@ -50,7 +53,7 @@ Supabase ist eine [gehostete Plattform](https://app.supabase.io).
 Du kannst dich bei Supabase anmelden und sofort loslegen, ohne etwas zu installieren.
 Du kannst Supabase auch selbst hosten und lokal entwickeln.
 
-![Architektur](https://supabase.com/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
+![Architektur](https://supabase.com/docs/assets/images/supabase-architecture-9050a7317e9ec7efb7807f5194122e48.png)
 
 - [PostgreSQL](https://www.postgresql.org/) ist ein objektrelationales Datenbanksystem, das seit über 30 Jahren aktiv entwickelt wird und für Zuverlässigkeit, Robustheit der Funktionen und Leistung geschätzt wird.
 - [Realtime](https://github.com/supabase/realtime) ist ein Elixir-Server, mit dem du auf PostgreSQL-Inserts, -Updates und -Deletes über Websockets hören kannst. Supabase hört auf die eingebaute Replikationsfunktionalität von Postgres, konvertiert den Replikations-Byte-Stream in JSON und sendet das JSON dann über Websockets.

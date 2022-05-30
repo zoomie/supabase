@@ -27,19 +27,21 @@ export default function SchemaFormPanel({
   const onClickSubmit = () => {
     formRef
       .submit()
-      .then((response) => {
+      .then(() => {
         setSubmitButtonLoading(true)
       })
-      .catch(console.error)
+      .catch((error) => {
+        console.log('Error on submitting', error)
+      })
   }
 
   return (
     <section className="section-block mb-8">
       <div
         className="
-          px-6 h-12 
-          bg-panel-header-light dark:bg-panel-header-dark 
-          border-b border-panel-border-light dark:border-panel-border-dark 
+          px-6 h-12
+          bg-panel-header-light dark:bg-panel-header-dark
+          border-b border-panel-border-light dark:border-panel-border-dark
           flex overflow-hidden items-center"
       >
         <div className="flex-1 text-left">
@@ -50,7 +52,7 @@ export default function SchemaFormPanel({
             hasChanged ? 'opacity-100' : 'opacity-0 cursor-default'
           }`}
         >
-          <Button onClick={onClickCancel} type="secondary" disabled={!hasChanged}>
+          <Button onClick={onClickCancel} type="default" disabled={!hasChanged}>
             {cancelLabel || 'Cancel'}
           </Button>
           <Button

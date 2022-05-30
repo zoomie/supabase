@@ -1,54 +1,64 @@
-import React, { useEffect, useState } from 'react'
+import React from 'react'
 import { observer } from 'mobx-react-lite'
-import { toast } from 'react-hot-toast'
-import { IconMoon, IconSun, Select, Typography } from '@supabase/ui'
+import { IconMoon, IconSun, Typography, Input, Listbox } from '@supabase/ui'
 
-import { useProfile, useStore, withAuth } from 'hooks'
+import { useProfile, useStore } from 'hooks'
 import { post } from 'lib/common/fetch'
 import { API_URL } from 'lib/constants'
-import AccountLayout from 'components/layouts/AccountLayout'
+import { AccountLayout } from 'components/layouts'
 import Panel from 'components/to-be-cleaned/Panel'
 import SchemaFormPanel from 'components/to-be-cleaned/forms/SchemaFormPanel'
+import { NextPageWithLayout } from 'types'
 
-const User = () => {
+const User: NextPageWithLayout = () => {
   return (
-    <AccountLayout
-      title="Supabase"
-      breadcrumbs={[
-        {
-          key: `supabase-settings`,
-          label: 'Preferences',
-        },
-      ]}
-    >
-      <div className="my-2">
-        <ProfileCard />
-      </div>
-    </AccountLayout>
+    <div className="my-2">
+      <ProfileCard />
+    </div>
   )
 }
 
-export default withAuth(User)
+User.getLayout = (page) => (
+  <AccountLayout
+    title="Supabase"
+    breadcrumbs={[
+      {
+        key: `supabase-settings`,
+        label: 'Preferences',
+      },
+    ]}
+  >
+    {page}
+  </AccountLayout>
+)
+
+export default User
 
 const ProfileCard = observer(() => {
   const { ui } = useStore()
   const { mutateProfile } = useProfile()
-
   const user = ui.profile
+
   const updateUser = async (model: any) => {
     try {
       const updatedUser = await post(`${API_URL}/profile/update`, model)
       mutateProfile(updatedUser, false)
       ui.setProfile(updatedUser)
-      toast(`Profile saved`)
+      ui.setNotification({ category: 'success', message: 'Successfully saved profile' })
     } catch (error) {
-      toast(`Couldn't update profile. Try again later.`)
-      console.error('updateUser error:', error)
+      ui.setNotification({
+        error,
+        category: 'error',
+        message: "Couldn't update profile. Please try again later.",
+      })
     }
   }
 
   return (
-    <article className="p-4 max-w-4xl">
+    <article className="max-w-4xl p-4">
+      <section>
+        <GithubProfile />
+      </section>
       <section className="">
         {/* @ts-ignore */}
         <SchemaFormPanel
@@ -75,14 +85,41 @@ const ProfileCard = observer(() => {
   )
 })
 
-function ThemeSettings() {
-  const [theme, setTheme] = useState('')
+const GithubProfile = observer(() => {
   const { ui } = useStore()
 
-  useEffect(() => {
-    const localStorageTheme = window.localStorage.getItem('theme')
-    if (localStorageTheme) setTheme(localStorageTheme)
-  }, [])
+  return (
+    <Panel
+      title={[
+        <Typography.Title key="panel-title" level={5} className="mb-0">
+          Account Information
+        </Typography.Title>,
+      ]}
+    >
+      <Panel.Content>
+        <div className="space-y-2">
+          <Input
+            readOnly
+            disabled
+            label="Username"
+            layout="horizontal"
+            value={ui.profile?.username ?? ''}
+          />
+          <Input
+            readOnly
+            disabled
+            label="Email"
+            layout="horizontal"
+            value={ui.profile?.primary_email ?? ''}
+          />
+        </div>
+      </Panel.Content>
+    </Panel>
+  )
+})
+
+const ThemeSettings = observer(() => {
+  const { ui } = useStore()
 
   return (
     <Panel
@@ -93,23 +130,32 @@ function ThemeSettings() {
       ]}
     >
       <Panel.Content>
-        <Select
-          value={theme}
+        <Listbox
+          value={ui.themeOption}
           label="Interface theme"
           descriptionText="Choose a theme preference"
           layout="horizontal"
           style={{ width: '50%' }}
-          icon={theme === 'light' ? <IconSun /> : <IconMoon />}
-          onChange={(e: any) => {
-            setTheme(e.target.value)
-            ui.setTheme(e.target.value)
-          }}
+          icon={
+            ui.themeOption === 'light' ? (
+              <IconSun />
+            ) : ui.themeOption === 'dark' ? (
+              <IconMoon />
+            ) : undefined
+          }
+          onChange={(themeOption: any) => ui.onThemeOptionChange(themeOption)}
         >
-          {/* <Select.Option value="system">System default</Select.Option> */}
-          <Select.Option value="dark">Dark</Select.Option>
-          <Select.Option value="light">Light</Select.Option>
-        </Select>
+          <Listbox.Option label="System default" value="system">
+            System default
+          </Listbox.Option>
+          <Listbox.Option label="Dark" value="dark">
+            Dark
+          </Listbox.Option>
+          <Listbox.Option label="Light" value="light">
+            Light
+          </Listbox.Option>
+        </Listbox>
       </Panel.Content>
     </Panel>
   )
-}
+})

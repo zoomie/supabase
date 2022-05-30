@@ -1,7 +1,13 @@
-import { FC, useState, useEffect } from 'react'
+import { FC, useState } from 'react'
 import { find, isUndefined } from 'lodash'
 import { Query, Dictionary } from '@supabase/grid'
-import { PostgresRelationship, PostgresTable, PostgresColumn } from '@supabase/postgres-meta'
+import { Modal } from '@supabase/ui'
+import {
+  PostgresRelationship,
+  PostgresTable,
+  PostgresColumn,
+  PostgresType,
+} from '@supabase/postgres-meta'
 
 import { useStore } from 'hooks'
 import { RowEditor, ColumnEditor, TableEditor } from '.'
@@ -43,30 +49,19 @@ const SidePanelEditor: FC<Props> = ({
 }) => {
   const { meta, ui } = useStore()
 
-  const [enumTypes, setEnumTypes] = useState<any[]>([])
   const [isEdited, setIsEdited] = useState<boolean>(false)
   const [isClosingPanel, setIsClosingPanel] = useState<boolean>(false)
 
   const tables = meta.tables.list()
-
-  useEffect(() => {
-    let cancel = false
-    const fetchEnumTypes = async () => {
-      const enumTypes = await meta.schemas.getEnums()
-      if (!cancel) setEnumTypes(enumTypes)
-    }
-    fetchEnumTypes()
-
-    return () => {
-      cancel = true
-    }
-  }, [])
+  const enumTypes = meta.types.list(
+    (type: PostgresType) => !meta.excludedSchemas.includes(type.schema)
+  )
 
   const saveRow = async (
     payload: any,
     isNewRecord: boolean,
     configuration: { identifiers: any; rowIdx: number },
-    resolve: any
+    onComplete: Function
   ) => {
     let saveRowError = false
     if (isNewRecord) {
@@ -107,7 +102,7 @@ const SidePanelEditor: FC<Props> = ({
       }
     }
 
-    resolve()
+    onComplete()
     if (!saveRowError) {
       setIsEdited(false)
       closePanel()
@@ -154,16 +149,17 @@ const SidePanelEditor: FC<Props> = ({
     },
     resolve: any
   ) => {
+    let toastId
     let saveTableError = false
     const { tableId, importContent, isRLSEnabled, isDuplicateRows } = configuration
 
-    if (isDuplicating) {
-      const duplicateTable = find(tables, { id: tableId }) as PostgresTable
-      const toastId = ui.setNotification({
-        category: 'loading',
-        message: `Duplicating table: ${duplicateTable.name}...`,
-      })
-      try {
+    try {
+      if (isDuplicating) {
+        const duplicateTable = find(tables, { id: tableId }) as PostgresTable
+        toastId = ui.setNotification({
+          category: 'loading',
+          message: `Duplicating table: ${duplicateTable.name}...`,
+        })
         const table: any = await meta.duplicateTable(payload, {
           isRLSEnabled,
           isDuplicateRows,
@@ -175,16 +171,11 @@ const SidePanelEditor: FC<Props> = ({
           message: `Table ${duplicateTable.name} has been successfully duplicated into ${table.name}!`,
         })
         onTableCreated(table)
-      } catch (error: any) {
-        saveTableError = true
-        ui.setNotification({ id: toastId, category: 'error', message: error.message })
-      }
-    } else if (isNewRecord) {
-      const toastId = ui.setNotification({
-        category: 'loading',
-        message: `Creating new table: ${payload.name}...`,
-      })
-      try {
+      } else if (isNewRecord) {
+        toastId = ui.setNotification({
+          category: 'loading',
+          message: `Creating new table: ${payload.name}...`,
+        })
         const table = await meta.createTable(toastId, payload, isRLSEnabled, columns, importContent)
         ui.setNotification({
           id: toastId,
@@ -192,32 +183,41 @@ const SidePanelEditor: FC<Props> = ({
           message: `Table ${table.name} is good to go!`,
         })
         onTableCreated(table)
-      } catch (error: any) {
-        saveTableError = true
-        ui.setNotification({ id: toastId, category: 'error', message: error.message })
-      }
-    } else if (selectedTableToEdit) {
-      const toastId = ui.setNotification({
-        category: 'loading',
-        message: `Updating table: ${selectedTableToEdit?.name}...`,
-      })
-      try {
-        const table: any = await meta.updateTable(toastId, selectedTableToEdit, payload, columns)
-        ui.setNotification({
-          id: toastId,
-          category: 'success',
-          message: `Successfully updated ${table.name}!`,
+      } else if (selectedTableToEdit) {
+        toastId = ui.setNotification({
+          category: 'loading',
+          message: `Updating table: ${selectedTableToEdit?.name}...`,
         })
-      } catch (error: any) {
-        saveTableError = true
-        ui.setNotification({ id: toastId, category: 'error', message: error.message })
+        const { table, hasError }: any = await meta.updateTable(
+          toastId,
+          selectedTableToEdit,
+          payload,
+          columns
+        )
+        if (hasError) {
+          ui.setNotification({
+            id: toastId,
+            category: 'info',
+            message: `Table ${table.name} has been updated, but there were some errors`,
+          })
+        } else {
+          ui.setNotification({
+            id: toastId,
+            category: 'success',
+            message: `Successfully updated ${table.name}!`,
+          })
+        }
       }
+    } catch (error: any) {
+      saveTableError = true
+      ui.setNotification({ id: toastId, category: 'error', message: error.message })
     }
 
     if (!saveTableError) {
       setIsEdited(false)
       closePanel()
     }
+
     resolve()
   }
 
@@ -266,8 +266,7 @@ const SidePanelEditor: FC<Props> = ({
       />
       <ConfirmationModal
         visible={isClosingPanel}
-        title="Confirm to close"
-        description="There are unsaved changes. Are you sure you want to close the panel? Your changes will be lost."
+        header="Confirm to close"
         buttonLabel="Confirm"
         onSelectCancel={() => setIsClosingPanel(false)}
         onSelectConfirm={() => {
@@ -275,6 +274,14 @@ const SidePanelEditor: FC<Props> = ({
           setIsEdited(false)
           closePanel()
         }}
+        children={
+          <Modal.Content>
+            <p className="text-scale-1100 py-4 text-sm">
+              There are unsaved changes. Are you sure you want to close the panel? Your changes will
+              be lost.
+            </p>
+          </Modal.Content>
+        }
       />
     </>
   )

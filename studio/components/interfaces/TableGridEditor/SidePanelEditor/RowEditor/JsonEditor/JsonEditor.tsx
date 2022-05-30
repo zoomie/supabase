@@ -1,7 +1,7 @@
 import { FC, useState, useEffect } from 'react'
-import toast from 'react-hot-toast'
 import { SidePanel, Typography } from '@supabase/ui'
 
+import { useStore } from 'hooks'
 import JsonEditor from './JsonCodeEditor'
 import TwoOptionToggle from './TwoOptionToggle'
 import DrilldownViewer from './DrilldownViewer'
@@ -17,7 +17,8 @@ type JsonEditProps = {
 }
 
 const JsonEdit: FC<JsonEditProps> = ({ column, jsonString, visible, closePanel, onSaveJSON }) => {
-  const [view, setView] = useState('edit')
+  const { ui } = useStore()
+  const [view, setView] = useState<'edit' | 'view'>('edit')
   const [jsonStr, setJsonStr] = useState('')
 
   useEffect(() => {
@@ -33,47 +34,44 @@ const JsonEdit: FC<JsonEditProps> = ({ column, jsonString, visible, closePanel, 
       const message = error.message
         ? `Error: ${error.message}`
         : 'Hmm, invalid JSON seems to have an invalid structure.'
-      toast.error(message)
+      ui.setNotification({ category: 'error', message })
     } finally {
       resolve()
     }
-  }
-
-  function toggleView(option: string) {
-    setView(option)
   }
 
   function onInputChange(value: any) {
     setJsonStr(value ?? '')
   }
 
-  function onToggleClick(option: string) {
-    toggleView(option)
+  function onToggleClick(option: 'edit' | 'view') {
+    setView(option)
   }
 
   return (
     <SidePanel
-      wide
-      title={'JSON'}
+      size="large"
+      header={'JSON'}
       visible={visible}
       onCancel={closePanel}
-      onConfirm={validateJSON}
       customFooter={<ActionBar closePanel={closePanel} applyFunction={validateJSON} />}
     >
-      <TwoOptionToggle
-        options={['view', 'edit']}
-        activeOption={view}
-        borderOverride="border-gray-500"
-        onClickOption={onToggleClick}
-      />
+      <SidePanel.Content>
+        <TwoOptionToggle
+          options={['view', 'edit']}
+          activeOption={view}
+          borderOverride="border-gray-500"
+          onClickOption={onToggleClick}
+        />
 
-      <div className="flex-auto flex flex-col mt-4">
-        {view === 'edit' ? (
-          <Editor column={column} value={jsonStr} onChange={onInputChange} />
-        ) : (
-          <Viewer column={column} value={jsonStr} />
-        )}
-      </div>
+        <div className="mt-4 flex flex-auto flex-col space-y-2">
+          {view === 'edit' ? (
+            <Editor column={column} value={jsonStr} onChange={onInputChange} />
+          ) : (
+            <Viewer column={column} value={jsonStr} />
+          )}
+        </div>
+      </SidePanel.Content>
     </SidePanel>
   )
 }
@@ -91,7 +89,7 @@ const Editor: FC<EditorProps> = ({ column, value, onChange }) => {
     <>
       <Typography.Title level={4}>Edit JSON Field: {column}</Typography.Title>
 
-      <div className="w-full h-96 flex-grow border dark:border-dark">
+      <div className="dark:border-dark h-96 w-full flex-grow border">
         <JsonEditor onInputChange={onChange} defaultValue={value} />
       </div>
     </>

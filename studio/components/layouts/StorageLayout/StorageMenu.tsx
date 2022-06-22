@@ -112,6 +112,13 @@ const StorageMenu: FC<Props> = () => {
               <Typography.Text className="truncate">Usage</Typography.Text>
             </Menu.Item>
           </Link>
+          <Flag name="logsStorage">
+            <Link href={`/project/${projectRef}/storage/logs`}>
+              <Menu.Item rounded active={page === 'logs'}>
+                <Typography.Text className="truncate">Logs</Typography.Text>
+              </Menu.Item>
+            </Link>
+          </Flag>
         </div>
       </div>
     </Menu>

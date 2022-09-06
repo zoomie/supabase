@@ -1,8 +1,8 @@
 import Head from 'next/head'
-import { FC, ReactNode, PropsWithChildren } from 'react'
+import { FC, ReactNode, PropsWithChildren, Fragment } from 'react'
 import { observer } from 'mobx-react-lite'
 import { useRouter } from 'next/router'
-import { useStore, withAuth } from 'hooks'
+import { useStore, withAuth, useFlag } from 'hooks'
 import { PROJECT_STATUS } from 'lib/constants'
 
 import Connecting from 'components/ui/Loading'
@@ -10,6 +10,7 @@ import NavigationBar from './NavigationBar/NavigationBar'
 import ProductMenuBar from './ProductMenuBar'
 import LayoutHeader from './LayoutHeader'
 import ConnectingState from './ConnectingState'
+import PausingState from './PausingState'
 import BuildingState from './BuildingState'
 
 interface Props {
@@ -30,10 +31,16 @@ const ProjectLayout = ({
   hideHeader = false,
   hideIconBar = false,
 }: PropsWithChildren<Props>) => {
+  const { ui } = useStore()
+  const ongoingIncident = useFlag('ongoingIncident')
+  const projectName = ui.selectedProject?.name
+
   return (
     <>
       <Head>
-        <title>{title ? `${title} | Supabase` : 'Supabase'}</title>
+        <title>
+          {title ? `${title} | Supabase` : projectName ? `${projectName} | Supabase` : 'Supabase'}
+        </title>
         <meta name="description" content="Supabase Studio" />
         <link rel="icon" href="/favicon.ico" />
       </Head>
@@ -47,8 +54,8 @@ const ProjectLayout = ({
         </MenuBarWrapper>
 
         <main
-          style={{ maxHeight: '100vh' }}
           className="flex w-full flex-1 flex-col overflow-x-hidden"
+          style={{ height: ongoingIncident ? 'calc(100vh - 44px)' : '100vh' }}
         >
           {!hideHeader && <LayoutHeader />}
           <ContentWrapper isLoading={isLoading}>{children}</ContentWrapper>
@@ -58,7 +65,7 @@ const ProjectLayout = ({
   )
 }
 
-export const ProjectLayoutWithAuth = withAuth(ProjectLayout)
+export const ProjectLayoutWithAuth = withAuth(observer(ProjectLayout))
 
 export default ProjectLayout
 
@@ -108,19 +115,21 @@ const ContentWrapper: FC<ContentWrapperProps> = observer(({ isLoading, children 
   const isProjectBuilding = [PROJECT_STATUS.COMING_UP, PROJECT_STATUS.RESTORING].includes(
     ui.selectedProject?.status ?? ''
   )
-
+  const isProjectPausing = ui.selectedProject?.status === PROJECT_STATUS.GOING_DOWN
   const isProjectOffline = ui.selectedProject?.postgrestStatus === 'OFFLINE'
 
   return (
     <>
       {isLoading || ui.selectedProject === undefined ? (
         <Connecting />
+      ) : isProjectPausing ? (
+        <PausingState project={ui.selectedProject} />
       ) : requiresPostgrestConnection && isProjectOffline ? (
         <ConnectingState project={ui.selectedProject} />
       ) : requiresDbConnection && isProjectBuilding ? (
         <BuildingState project={ui.selectedProject} />
       ) : (
-        <>{children}</>
+        <Fragment key={ui.selectedProject.ref}>{children}</Fragment>
       )}
     </>
   )

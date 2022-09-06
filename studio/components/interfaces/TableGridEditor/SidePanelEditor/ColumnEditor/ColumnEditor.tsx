@@ -1,7 +1,7 @@
 import { FC, useEffect, useState } from 'react'
 import { isUndefined, isEmpty } from 'lodash'
-import { Dictionary } from '@supabase/grid'
-import { Checkbox, SidePanel, Space, Input, Divider } from '@supabase/ui'
+import { Dictionary } from 'components/grid'
+import { Checkbox, SidePanel, Input } from '@supabase/ui'
 import {
   PostgresColumn,
   PostgresRelationship,
@@ -23,6 +23,7 @@ import {
   generateCreateColumnPayload,
   generateUpdateColumnPayload,
 } from './ColumnEditor.utils'
+import { TEXT_TYPES } from '../SidePanelEditor.constants'
 import { ColumnField, CreateColumnPayload, UpdateColumnPayload } from '../SidePanelEditor.types'
 
 interface Props {
@@ -70,7 +71,14 @@ const ColumnEditor: FC<Props> = ({
     }
   }, [visible])
 
+  if (!columnFields) return null
+
   const onUpdateField = (changes: Partial<ColumnField>) => {
+    const isTextBasedColumn = TEXT_TYPES.includes(columnFields.format)
+    if (!isTextBasedColumn && changes.defaultValue === '') {
+      changes.defaultValue = null
+    }
+
     const updatedColumnFields = { ...columnFields, ...changes } as ColumnField
     setColumnFields(updatedColumnFields)
     updateEditorDirty()
@@ -82,7 +90,9 @@ const ColumnEditor: FC<Props> = ({
     setErrors(updatedErrors)
   }
 
-  const saveColumnForeignKey = (foreignKeyConfiguration: any) => {
+  const saveColumnForeignKey = (
+    foreignKeyConfiguration: { table: PostgresTable; column: PostgresColumn } | undefined
+  ) => {
     onUpdateField({
       foreignKey: !isUndefined(foreignKeyConfiguration)
         ? {
@@ -124,8 +134,6 @@ const ColumnEditor: FC<Props> = ({
     }
   }
 
-  if (!columnFields) return null
-
   return (
     <SidePanel
       size="large"
@@ -144,6 +152,12 @@ const ColumnEditor: FC<Props> = ({
           applyFunction={(resolve: () => void) => onSaveChanges(resolve)}
         />
       }
+      onInteractOutside={(event) => {
+        const isToast = (event.target as Element)?.closest('#toast')
+        if (isToast) {
+          event.preventDefault()
+        }
+      }}
     >
       <SidePanel.Content>
         <div className="space-y-10 py-6">

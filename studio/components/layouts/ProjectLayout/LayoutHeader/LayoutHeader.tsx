@@ -1,27 +1,42 @@
-import { observer } from 'mobx-react-lite'
 import Link from 'next/link'
+import { observer } from 'mobx-react-lite'
+import { useRouter } from 'next/router'
 
-import { IS_PLATFORM } from 'lib/constants'
-import { useStore } from 'hooks'
+import { IS_PLATFORM, PRICING_TIER_PRODUCT_IDS } from 'lib/constants'
+import { useStore, useProjectUsage } from 'hooks'
 import BreadcrumbsView from './BreadcrumbsView'
 import OrgDropdown from './OrgDropdown'
 import ProjectDropdown from './ProjectDropdown'
 import FeedbackDropdown from './FeedbackDropdown'
 import HelpPopover from './HelpPopover'
+import NotificationsPopover from './NotificationsPopover'
+import { Badge } from '@supabase/ui'
+import { getResourcesExceededLimits } from 'components/ui/OveragesBanner/OveragesBanner.utils'
 
 const LayoutHeader = ({ customHeaderComponents, breadcrumbs = [], headerBorder = true }: any) => {
   const { ui } = useStore()
   const { selectedOrganization, selectedProject } = ui
 
+  const router = useRouter()
+  const { ref } = router.query
+
+  const { usage } = useProjectUsage(ref as string)
+  const resourcesExceededLimits = getResourcesExceededLimits(usage)
+  const projectHasNoLimits =
+    ui.selectedProject?.subscription_tier === PRICING_TIER_PRODUCT_IDS.PAYG ||
+    ui.selectedProject?.subscription_tier === PRICING_TIER_PRODUCT_IDS.ENTERPRISE
+  const showOverUsageBadge =
+    selectedProject?.subscription_tier !== undefined &&
+    !projectHasNoLimits &&
+    resourcesExceededLimits.length > 0
+
   return (
     <div
-      className={`py-2 px-5 max-h-12 h-12 flex justify-between items-center ${
-        headerBorder ? 'border-b dark:border-dark' : ''
+      className={`flex h-12 max-h-12 items-center justify-between py-2 px-5 ${
+        headerBorder ? 'dark:border-dark border-b' : ''
       }`}
     >
-      {/* <div className="PageHeader"> */}
-      {/* <div className="flex justify-between"> */}
-      <div className="text-sm flex items-center -ml-2">
+      <div className="-ml-2 flex items-center text-sm">
         {/* Organization is selected */}
         {selectedOrganization ? (
           <>
@@ -48,13 +63,22 @@ const LayoutHeader = ({ customHeaderComponents, breadcrumbs = [], headerBorder =
                 </span>
                 {/* Project Dropdown */}
                 <ProjectDropdown />
+                {showOverUsageBadge && (
+                  <div className="ml-2">
+                    <Link href={`/project/${ref}/settings/billing`}>
+                      <a>
+                        <Badge color="red">Project has exceeded usage limits </Badge>
+                      </a>
+                    </Link>
+                  </div>
+                )}
               </>
             )}
           </>
         ) : (
           <Link href="/">
             <a
-              className={`text-xs text-scale-1200 px-2 py-1 focus:outline-none focus:bg-transparent cursor-pointer`}
+              className={`text-scale-1200 cursor-pointer px-2 py-1 text-xs focus:bg-transparent focus:outline-none`}
             >
               Supabase
             </a>
@@ -63,14 +87,13 @@ const LayoutHeader = ({ customHeaderComponents, breadcrumbs = [], headerBorder =
         {/* Additional breadcrumbs are supplied */}
         <BreadcrumbsView defaultValue={breadcrumbs} />
       </div>
-      <div className="flex space-x-2">
+      <div className="flex items-center space-x-2">
         {customHeaderComponents && customHeaderComponents}
         {IS_PLATFORM && <HelpPopover />}
         {IS_PLATFORM && <FeedbackDropdown />}
+        {IS_PLATFORM && <NotificationsPopover />}
       </div>
     </div>
-    // </div>
-    // </div>
   )
 }
 export default observer(LayoutHeader)

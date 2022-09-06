@@ -1,14 +1,6 @@
 import React, { FC, useState } from 'react'
 import { partition, isEmpty, isUndefined } from 'lodash'
-import {
-  Alert,
-  Button,
-  IconEdit,
-  IconHelpCircle,
-  IconKey,
-  IconTrash,
-  Typography,
-} from '@supabase/ui'
+import { Alert, Button, IconEdit, IconHelpCircle, IconKey, IconTrash } from '@supabase/ui'
 import {
   PostgresTable,
   PostgresColumn,
@@ -27,9 +19,10 @@ import * as Tooltip from '@radix-ui/react-tooltip'
 import Column from './Column'
 import InformationBox from 'components/ui/InformationBox'
 import ForeignKeySelector from '../ForeignKeySelector/ForeignKeySelector'
-import { ColumnField } from '../SidePanelEditor.types'
 import { ImportContent } from './TableEditor.types'
 import { generateColumnField } from '../ColumnEditor/ColumnEditor.utils'
+import { ColumnField } from '../SidePanelEditor.types'
+import { TEXT_TYPES } from '../SidePanelEditor.constants'
 
 interface Props {
   table?: Partial<PostgresTable>
@@ -91,6 +84,11 @@ const ColumnManagement: FC<Props> = ({
   const onUpdateColumn = (columnToUpdate: ColumnField, changes: Partial<ColumnField>) => {
     const updatedColumns = columns.map((column: ColumnField) => {
       if (column.id === columnToUpdate.id) {
+        const isTextBasedColumn = TEXT_TYPES.includes(columnToUpdate.format)
+        if (!isTextBasedColumn && changes.defaultValue === '') {
+          changes.defaultValue = null
+        }
+
         if ('name' in changes && !isUndefined(column.foreignKey)) {
           const foreignKey: PostgresRelationship = {
             ...column.foreignKey,
@@ -144,7 +142,7 @@ const ColumnManagement: FC<Props> = ({
     <>
       <div className="table-editor-columns w-full space-y-4">
         <div className="flex w-full items-center justify-between">
-          <Typography.Title level={5}>Columns</Typography.Title>
+          <h5>Columns</h5>
           {isNewRecord && (
             <>
               {hasImportContent ? (
@@ -167,10 +165,10 @@ const ColumnManagement: FC<Props> = ({
 
         {hasImportContent && (
           <div className="my-2 opacity-75">
-            <Typography.Text>
+            <p>
               Your table will be created with {importContent?.rowCount?.toLocaleString()} rows and
               the following {columns.length} columns.
-            </Typography.Text>
+            </p>
           </div>
         )}
 
@@ -187,7 +185,7 @@ const ColumnManagement: FC<Props> = ({
             block
             icon={<IconKey className="text-white" size="large" />}
             title="Composite primary key selected"
-            description="The columns that you've selected will grouped as a primary key, and will serve
+            description="The columns that you've selected will be grouped as a primary key, and will serve
             as the unique identifier for the rows in your table"
           />
         )}

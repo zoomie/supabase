@@ -1,15 +1,16 @@
 import { FC, useState, useEffect } from 'react'
 
-import { useStore } from 'hooks'
+import { useFlag, useStore, checkPermissions } from 'hooks'
 import { API_URL } from 'lib/constants'
 import { get } from 'lib/common/fetch'
 
-import AWSMarketplaceSubscription from './AWSMarketplaceSubscription'
 import ProjectsSummary from './ProjectsSummary'
 import CreditBalance from './CreditBalance'
 import PaymentMethods from './PaymentMethods'
 import BillingAddress from './BillingAddress/BillingAddress'
 import TaxID from './TaxID/TaxID'
+import { PermissionAction } from '@supabase/shared-types/out/constants'
+import BillingEmail from './BillingEmail'
 
 interface Props {
   organization: any
@@ -37,6 +38,14 @@ const BillingSettings: FC<Props> = ({ organization, projects = [] }) => {
     isCredit && customerBalance !== 0
       ? customerBalance.toString().replace('-', '')
       : customerBalance
+
+  const enablePermissions = useFlag('enablePermissions')
+
+  const canUpdateOrganization = enablePermissions
+    ? checkPermissions(PermissionAction.UPDATE, 'organizations')
+    : ui.selectedOrganization?.is_owner
+
+  const canReadBillingEmail = checkPermissions(PermissionAction.READ, 'organizations')
 
   useEffect(() => {
     getCustomerProfile()
@@ -94,33 +103,30 @@ const BillingSettings: FC<Props> = ({ organization, projects = [] }) => {
 
   return (
     <article className="container my-4 max-w-4xl space-y-8">
-      {organization.aws_marketplace ? (
-        <AWSMarketplaceSubscription organization={organization} />
-      ) : (
-        <>
-          <div className="space-y-8">
-            <ProjectsSummary projects={projects} />
-            <CreditBalance balance={balance} isCredit={isCredit} isDebt={isDebt} />
-            <PaymentMethods
-              loading={isLoadingCustomer || isLoadingPaymentMethods}
-              defaultPaymentMethod={defaultPaymentMethod}
-              paymentMethods={paymentMethods || []}
-              onDefaultMethodUpdated={setCustomer}
-              onPaymentMethodsDeleted={() => getPaymentMethods()}
-            />
-            <BillingAddress
-              loading={isLoadingCustomer}
-              address={customer?.address ?? {}}
-              onAddressUpdated={(address: any) => setCustomer({ ...customer, address })}
-            />
-            <TaxID
-              loading={isLoadingTaxIds}
-              taxIds={taxIds || []}
-              onTaxIdsUpdated={(ids: any) => setTaxIds(ids)}
-            />
-          </div>
-        </>
-      )}
+      <div className="space-y-8">
+        <ProjectsSummary projects={projects} />
+        <CreditBalance balance={balance} isCredit={isCredit} isDebt={isDebt} />
+        <PaymentMethods
+          loading={isLoadingCustomer || isLoadingPaymentMethods}
+          defaultPaymentMethod={defaultPaymentMethod}
+          paymentMethods={paymentMethods || []}
+          onDefaultMethodUpdated={setCustomer}
+          onPaymentMethodsDeleted={() => getPaymentMethods()}
+        />
+
+        <BillingEmail />
+
+        <BillingAddress
+          loading={isLoadingCustomer}
+          address={customer?.address ?? {}}
+          onAddressUpdated={(address: any) => setCustomer({ ...customer, address })}
+        />
+        <TaxID
+          loading={isLoadingTaxIds}
+          taxIds={taxIds || []}
+          onTaxIdsUpdated={(ids: any) => setTaxIds(ids)}
+        />
+      </div>
     </article>
   )
 }
